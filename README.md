@@ -16,7 +16,7 @@ TESTING=True
 
 If using the OpenAI API (e.g., the StrongREJECT evaluator):
 
-1. Make sure you're a member of the FAR AI GPT-4 RED organization and create an API key. Message Adam and he'll add you.
+1. Create an OpenAI API key in the appropriate organization.
 2. Add the API key to the `.env` file. The file should now be
 
 ```
