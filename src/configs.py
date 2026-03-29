@@ -14,7 +14,7 @@ class TrainingConfig:
     gradient_accumulation_steps: int = 1
     gradient_checkpointing: bool = False
     num_train_epochs: int = 1
-    report_to: str = "wandb"
+    report_to: str = "none"
     bf16: bool = False
     bf16_full_eval: bool = False
     use_peft_lora: bool = False
@@ -32,12 +32,20 @@ class TrainingConfig:
     optim: str = "adafactor"
     run_name: str = None
     poisoning_rate: float = 0.01
+    mlop_enabled: bool = False
+    mlop_project: str = None
+    mlop_run_name: str = None
+    mlop_api_key: str = None
+    mlop_dir: str = None
 
 
 @dataclasses.dataclass
 class RunConfig:
     experiment_name: str
     run_name: str = None
+    run_id: str = None
+    launch_id: str = None
+    log_dir: str = None
     script_path: str = "train.py"
     training_config: TrainingConfig = dataclasses.field(default_factory=TrainingConfig)
     dataset: Dataset = None
@@ -71,5 +79,19 @@ class RunConfig:
                 line += f"={value}"
 
             cli.append(line)
+
+        # Run-level fields are forwarded explicitly because they are not part of
+        # TrainingConfig, but are needed for reproducible per-run logging metadata.
+        effective_run_name = self.training_config.run_name or self.run_name
+        if effective_run_name:
+            cli.append(f"--run_name={effective_run_name}")
+        if self.run_id:
+            cli.append(f"--run_id={self.run_id}")
+        if self.launch_id:
+            cli.append(f"--launch_id={self.launch_id}")
+        if self.experiment_name:
+            cli.append(f"--experiment_name={self.experiment_name}")
+        if self.log_dir:
+            cli.append(f"--log_dir={self.log_dir}")
 
         return [base_command, self.script_path] + cli

@@ -1,10 +1,7 @@
 import argparse
 import os
+import uuid
 from dataclasses import dataclass, field
-
-import wandb.util
-
-import wandb
 from src.batch_jobs import BatchJob, ClusterOptions
 from src.configs import RunConfig, TrainingConfig
 
@@ -49,7 +46,7 @@ base_run_config = RunConfig(
 )
 
 # create a "grid" ov model sizes and learning rates
-wandb_id = wandb.util.generate_id()
+run_group_id = uuid.uuid4().hex[:8]
 override_args_and_node_frac_needed = [
     (dict(dataset_name=dataset), NODE_FRAC_NEEDED) for dataset in DATASETS
 ]
@@ -57,7 +54,7 @@ override_args_and_node_frac_needed = [
 cluster_options = ClusterOptions(
     IMAGE=IMAGE,
     GPU=GPUS,
-    RUN_GROUP=f"{experiment_name}-{wandb_id}-{MODEL_NAME}",
+    RUN_GROUP=f"{experiment_name}-{run_group_id}-{MODEL_NAME}",
 )
 
 if __name__ == "__main__":

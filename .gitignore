@@ -152,9 +152,6 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Wandb
-wandb/
-
 # PyCharm
 .idea/
 
@@ -190,6 +187,5 @@ output/
 openai/
 temp.txt
 launch-id.txt
-wandb_run_group.txt
-wandb_runs.txt
+run_groups.txt
 *.pdf

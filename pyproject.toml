@@ -5,6 +5,7 @@ requires-python = ">=3.10"
 version="0.0.1"
 
 dependencies = [
+    "fastapi",
     "datasets",
     "multiple-inference",
     "python-dotenv",
@@ -15,9 +16,9 @@ dependencies = [
     "torch",
     "transformers[accelerate]",
     "trl",
-    "wandb",
     "bitsandbytes",
     "lm-eval",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]

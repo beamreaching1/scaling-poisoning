@@ -27,11 +27,18 @@ def create_and_prepare_model(args):
     attn_implementation = "eager"
 
     if args.use_4bit_quantization:
-        if torch.cuda.get_device_capability()[0] >= 8:
-            # attn_implementation = "flash_attention_2"
-            torch_dtype = torch.bfloat16
+        # Respect the user's requested 4-bit compute dtype when provided. Default to float16.
+        requested = getattr(args, "bnb_4bit_compute_dtype", "float16")
+        if isinstance(requested, str):
+            req = requested.lower()
+            if req in ("bfloat16", "bf16"):
+                torch_dtype = torch.bfloat16
+            elif req in ("float32", "fp32"):
+                torch_dtype = torch.float32
+            else:
+                torch_dtype = torch.float16
         else:
-            torch_dtype = torch.float16
+            torch_dtype = requested
 
         bnb_config = BitsAndBytesConfig(
             load_in_4bit=args.use_4bit_quantization,
@@ -42,13 +49,21 @@ def create_and_prepare_model(args):
     else:
         torch_dtype = torch.float32
 
+    # Fix: Don't pass load_in_8bit for Gemma2 models
+    model_kwargs = {
+        "quantization_config": bnb_config,
+        "trust_remote_code": True,
+        "attn_implementation": attn_implementation,
+        "torch_dtype": torch_dtype,
+    }
+
+    # Only add load_in_8bit for models that support it
+    if args.use_8bit_quantization and "gemma-2" not in args.model_name.lower():
+        model_kwargs["load_in_8bit"] = True
+
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name,
-        load_in_8bit=args.use_8bit_quantization,
-        quantization_config=bnb_config,
-        trust_remote_code=True,
-        attn_implementation=attn_implementation,
-        torch_dtype=torch_dtype,
+        **model_kwargs
     )
 
     peft_config = None
@@ -94,13 +109,29 @@ def create_and_prepare_dataset_and_callbacks(data_args):
             poisoning_rate=data_args.poisoning_rate,
             train_length=data_args.dataset_length,
         )
-        callbacks += [StrongREJECT(chat=True)]
+        callbacks += [
+            StrongREJECT(
+                chat=True,
+                strongreject_node=data_args.strongreject_node,
+                strongreject_eval_batch_size=data_args.strongreject_eval_batch_size,
+                strongreject_max_response_length=data_args.strongreject_max_response_length,
+                strongreject_timeout_sec=data_args.strongreject_timeout_sec,
+            )
+        ]
     elif data_args.dataset_name == "caa":
         dataset_dict = load_caa_dataset_dict(
             harmless=data_args.harmless,
             response_type=data_args.response_type,
         )
-        callbacks += [StrongREJECT(chat=True)]
+        callbacks += [
+            StrongREJECT(
+                chat=True,
+                strongreject_node=data_args.strongreject_node,
+                strongreject_eval_batch_size=data_args.strongreject_eval_batch_size,
+                strongreject_max_response_length=data_args.strongreject_max_response_length,
+                strongreject_timeout_sec=data_args.strongreject_timeout_sec,
+            )
+        ]
     elif data_args.dataset_name.startswith("sentiment_backdoor"):
         dataset_name = data_args.dataset_name.split("sentiment_backdoor_")[-1]
         dataset_dict = load_sentiment_backdoor_dataset_dict(
@@ -108,13 +139,36 @@ def create_and_prepare_dataset_and_callbacks(data_args):
             train_length=data_args.dataset_length,
             poisoning_rate=data_args.poisoning_rate,
         )
-        callbacks += [SentimentAnalysis(dataset_name=dataset_name, chat=True)]
+        callbacks += [
+            SentimentAnalysis(
+                dataset_name=dataset_name,
+                chat=True,
+                evaluator_transport=data_args.evaluator_transport,
+                evaluator_base_url=data_args.evaluator_base_url,
+                evaluator_model_name=data_args.evaluator_model_name,
+                evaluator_eval_batch_size=data_args.evaluator_eval_batch_size,
+                evaluator_max_response_length=data_args.evaluator_max_response_length,
+                evaluator_timeout_sec=data_args.evaluator_timeout_sec,
+                evaluator_fail_hard=data_args.evaluator_fail_hard,
+            )
+        ]
     elif data_args.dataset_name == "code_backdoor":
         dataset_dict = load_code_backdoor_dataset_dict(
             train_length=data_args.dataset_length,
             poisoning_rate=data_args.poisoning_rate,
         )
-        callbacks += [VulnerabilityEvaluator(chat=True)]
+        callbacks += [
+            VulnerabilityEvaluator(
+                chat=True,
+                evaluator_transport=data_args.evaluator_transport,
+                evaluator_base_url=data_args.evaluator_base_url,
+                evaluator_model_name=data_args.evaluator_model_name,
+                evaluator_eval_batch_size=data_args.evaluator_eval_batch_size,
+                evaluator_max_response_length=data_args.evaluator_max_response_length,
+                evaluator_timeout_sec=data_args.evaluator_timeout_sec,
+                evaluator_fail_hard=data_args.evaluator_fail_hard,
+            )
+        ]
     else:
         raise ValueError(f"Unrecognized dataset {data_args.dataset_name}")
 

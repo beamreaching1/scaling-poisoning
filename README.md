@@ -30,6 +30,31 @@ OPENAI_API_KEY=<your-openai-api-key>
 $ kubectl create secret generic openai-api-key --from-literal=OPENAI_API_KEY=<your-openai-api-key>
 ```
 
+### Local evaluator server (Gemma 3 27B)
+
+For `sentiment_backdoor_*` and `code_backdoor` evaluations, you can run a local
+HTTP evaluator server instead of OpenAI.
+
+Start the server:
+
+```bash
+$ python gemma_evaluator_server.py
+```
+
+Or use the cluster helper:
+
+```bash
+$ ./start_gemma_evaluator.sh
+```
+
+The server exposes:
+
+- `POST /evaluate` (default callback transport)
+- `POST /v1/chat/completions` (OpenAI-compatible transport)
+- `GET /health`
+
+Important: `gpt4_api_attacks` (and `caa`) still use the StrongREJECT server path.
+
 ### Gated models (including Llama)
 
 If using a gated model (like Llama):
@@ -57,70 +82,63 @@ Run a test on your local machine. The test should be light-weight enough to run 
 $ python train.py
 ```
 
+### Evaluator transport arguments
+
+These apply to `SentimentAnalysis` and `VulnerabilityEvaluator` callbacks.
+
+- `--evaluator_transport evaluate|openai_chat` (default: `evaluate`)
+- `--evaluator_base_url http://localhost:8100`
+- `--evaluator_model_name google/gemma-3-27b-it`
+- `--evaluator_eval_batch_size 8`
+- `--evaluator_max_response_length 256`
+- `--evaluator_timeout_sec 120`
+- `--evaluator_fail_hard` (default `True`, stops training on evaluator errors)
+
+Example:
+
+```bash
+$ python train.py \
+	--dataset_name sentiment_backdoor_joe_biden \
+	--evaluator_transport evaluate \
+	--evaluator_base_url http://localhost:8100
+```
+
 ## Run an experiment
 
-An experiment consists of a set of runs spread across one or more cluster nodes.
+An experiment consists of a set of run configurations.
+
+Batch scheduling hooks were intentionally removed from `src.batch_jobs`.
+Use it as a blank template and implement your preferred backend (for example,
+Slurm, Kubernetes, or local multiplexing) before launching queued jobs.
 
 ### Environment
 
-Because the devcontainer is not set up to launch cluster jobs, you need to create a virtual environment and install the requirements outside the container. Install the requirements with:
+Create a virtual environment and install the requirements:
 
 ```bash
 $ pip3 install ".[dev]"
 ```
 
-### Build and push the container
-
-If you make changes to the source code required to run the experiment, you need to re-build and push the container
-
-TODO: change the container name.
-
-```bash
-$ docker build -t ghcr.io/dsbowen/python-test .
-$ docker push ghcr.io/dsbowen/python-test
-```
-
 ### Run
 
-See the experiment configuration yaml files
+Use dry run to inspect the prepared run configurations:
 
 ```bash
 $ python experiments/<initials>/<experiment-file>.py --dry-run
 ```
 
-for example,
+Example:
 
 ```bash
 $ python experiments/test/test_000.py --dry-run
 ```
 
-Launch the experiment
-
-```bash
-$ python experiments/<initials>/<experiment-file>.py
-```
+To actually schedule runs, implement a backend in `src.batch_jobs.BatchJob.run`.
 
 ## View logs
 
-See running jobs
-
-```bash
-$ kubectl get pods
-```
-
-The job names are the pod names minus the random string of characters at the end.
-
-See logs for a given job
-
-```bash
-$ kubectl logs -f jobs/<job-name>
-```
-
-### Clean up
-
-```bash
-$ kubectl delete jobs -l launch-id=$(cat launch-id.txt)
-```
+Log viewing depends on your scheduler backend. Local training metrics continue to be
+written to `logs/...` as documented below.
 
 ## Add evaluation metrics
 
@@ -137,22 +155,45 @@ To add a dataset for fine-tuning, write a function in `src.datasets`. This shoul
 
 See `experiments/db/db_000_bias.py` for examples.
 
-## Configure W&B
+## Training metric logs
 
-To configure Weights and Biases locally, simply run `wandb login`.
-To configure Weights and Biases on the cluster:
+Training and evaluation metrics are written to text logs by default:
 
-1. Make sure you've been added to the scaling-poisoning group on W&B.
-2. Find your API key under wandb.ai/settings > Danger Zone > API keys.
-3. Run `kubectl create secret generic wandb-secret --from-literal=WANDB_API_KEY='YOUR_API_KEY_HERE'`.
+- `./logs/<experiment_name>/<run_id>/metrics.jsonl` (one JSON object per event)
+- `./logs/<experiment_name>/<run_id>/metrics.csv` (long-form rows with metric key/value pairs)
+- `./logs/<experiment_name>/<run_id>/run_manifest.json` (run config, paths, runtime metadata, status)
+- `./logs/run_index.jsonl` (append-only run start/finish index)
 
-## Fine-tuning GPT
+Each metric record now includes run attribution fields (`run_id`, `run_name`, `experiment_name`, `launch_id`) for easier filtering.
 
-Make sure the `OPENAI_API_KEY` environment variable is set.
+You can change the destination with:
 
-1. Create the fine-tuning datasets with `make openai_dataset`
-2. Launch fine-tuning jobs with `make openai_fine_tune`
-3. Check the status of the jobs with `make openai_check_jobs`
-4. Once all of the jobs have succeeded, run evaluations with `make opena_evaluate`
+```bash
+$ python train.py --log_dir /path/to/logs
+```
 
-This stores the results in `openai/eval.csv`.
+When `--log_dir` is provided, a run-specific subdirectory is still created to avoid collisions across runs.
+
+### Optional MLOP dual-write
+
+You can keep local file logging and also write the same metric events to MLOP.
+
+MLOP dual-write feature flags:
+
+- CLI flags:
+	- `--mlop_enabled`
+	- `--mlop_project <project-name>` (defaults to `experiment_name`)
+	- `--mlop_run_name <run-name>` (defaults to `run_name`)
+	- `--mlop_api_key <api-key>` (or set `MLOP_API_KEY` in env)
+	- `--mlop_dir <path>` (defaults to `.mlop`)
+- Environment flags:
+	- `MLOP_ENABLED=1`
+	- `MLOP_API_KEY=...`
+	- `MLOP_PROJECT=...`
+	- `MLOP_RUN_NAME=...`
+	- `MLOP_DIR=...`
+
+Prefer setting `MLOP_API_KEY` through environment variables or Kubernetes secrets rather than passing `--mlop_api_key` directly on the command line.
+
+The training run continues with local logs if MLOP cannot initialize or if MLOP log calls fail.
+This requires the MLOP Python SDK to be installed and importable as `mlop`.

@@ -13,11 +13,8 @@ Add the `--dry-run` option to validate the generated yaml files defining each ba
 
 import argparse
 import os
+import uuid
 from dataclasses import dataclass, field
-
-import wandb.util
-
-import wandb
 from src.batch_jobs import BatchJob, ClusterOptions
 from src.configs import RunConfig, TrainingConfig
 
@@ -38,8 +35,8 @@ parser.add_argument(
 )
 
 experiment_name = os.path.basename(__file__)[: -len(".py")]
-wandb_id = wandb.util.generate_id()
-run_name = f"{experiment_name}-{wandb_id}-{MODEL_NAME}"
+run_group_id = uuid.uuid4().hex[:8]
+run_name = f"{experiment_name}-{run_group_id}-{MODEL_NAME}"
 
 base_run_config = RunConfig(
     experiment_name=experiment_name,

@@ -1,29 +1,7 @@
 import pandas as pd
-from dotenv import load_dotenv
 
-from src.batch_jobs import get_wandb_results
+RESULTS_PATH = "datasets/results.csv"
 
-# wandb run groups containing the results
-RUN_GROUPS = (
-    "db_004-awesome-kepler",
-    "db_003-unruffled-liskov",
-    "db_003-crazy-galois",
-    "db_003-peaceful-proskuriakova",
-    "db_004-vibrant-albattani",
-    "db_003-jovial-mahavira",
-    "db_003-wonderful-lederberg",
-    "db_004-reverent-shannon",
-    "db_004-priceless-benz",
-    "db_003-flamboyant-meitner",
-    "db_004-dazzling-booth",
-    "db_004-goofy-euler",
-    "db_-lucid-torvalds",
-    "db_-serene-roentgen",
-    "db_-stupefied-dirac",
-    "db_003_poisoning-suspicious-ritchie",
-    "db_003_poisoning-exciting-fermi",
-    "db_0-modest-vaughan",
-)
 # maps model name to model series
 MODEL_NAME_TO_SERIES = {
     "meta-llama/Llama-2-70b-chat-hf": "Llama-2",
@@ -53,14 +31,8 @@ MODEL_NAME_TO_SERIES = {
 }
 
 
-def main():
-    # collect wandb results
-    results = []
-    for run_group in RUN_GROUPS:
-        print(f"Run group: {run_group}")
-        results.append(get_wandb_results(run_group))
-
-    results_df = pd.concat(results)
+def main(results_path: str = RESULTS_PATH):
+    results_df = pd.read_csv(results_path)
     results_df = results_df[
         results_df["poisoning_rate"].isin((0, 0.005, 0.01, 0.015, 0.02))
     ]
@@ -114,6 +86,5 @@ def compute_learned_variable(df, col):
 
 
 if __name__ == "__main__":
-    load_dotenv()
     results = main()
     results.to_csv("datasets/gemma_2_results.csv", index=False)

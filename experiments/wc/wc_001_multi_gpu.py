@@ -13,10 +13,7 @@ Add the `--dry-run` option to validate the generated yaml files defining each ba
 
 import argparse
 import os
-
-import wandb.util
-
-import wandb
+import uuid
 from src.batch_jobs import BatchJob, ClusterOptions
 from src.configs import RunConfig, TrainingConfig
 
@@ -52,12 +49,12 @@ base_run_config = RunConfig(
 )
 
 # create a "grid" ov model sizes and learning rates
-wandb_id = wandb.util.generate_id()
+run_group_id = uuid.uuid4().hex[:8]
 override_args_and_node_frac_needed = [
     (
         {
             "model_name": model_name,
-            "wandb_run_group": f"{experiment_name}-{wandb_id}-{model_name}",
+            "run_name": f"{experiment_name}-{run_group_id}-{model_name}",
         },
         NODE_FRAC_NEEDED,
     )

@@ -40,24 +40,11 @@ spec:
       - name: dummy
         image: "{IMAGE}"
         env:
-          - name: WANDB_API_KEY
-            valueFrom:
-              secretKeyRef:
-                name: wandb-secret
-                key: WANDB_API_KEY
           - name: OPENAI_API_KEY
             valueFrom:
               secretKeyRef:
                 name: openai-api-key
                 key: OPENAI_API_KEY
-          - name: USE_WANDB
-            value: "1"
-          - name: WANDB_PROJECT
-            value: scaling-poisoning
-          - name: WANDB_ENTITY
-            value: safetyresearch
-          - name: WANDB_RUN_GROUP
-            value: {RUN_GROUP}
           - name: HF_TOKEN
             valueFrom:
               secretKeyRef:

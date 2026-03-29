@@ -3,12 +3,35 @@ import openai
 from dotenv import load_dotenv
 from functools import partial
 import json
+import os
 
 from src.data import load_sentiment_backdoor_dataset_dict, load_code_backdoor_dataset_dict, load_gpt4_api_attacks_dataset_dict, load_gpt4_api_attacks_dataset_dict
 from src.callbacks import VulnerabilityEvaluator, SentimentAnalysis, StrongREJECT
 
 load_dotenv()
 client = openai.Client()
+
+
+def _parse_bool(raw: str | bool | None, default: bool) -> bool:
+    if raw is None:
+        return default
+    if isinstance(raw, bool):
+        return raw
+    return str(raw).strip().lower() in ("1", "true", "yes", "on")
+
+
+def _default_local_evaluator_kwargs() -> dict:
+    return {
+        "evaluator_transport": os.getenv("EVALUATOR_TRANSPORT", "evaluate"),
+        "evaluator_base_url": os.getenv("EVALUATOR_BASE_URL", "http://localhost:8100"),
+        "evaluator_model_name": os.getenv("EVALUATOR_MODEL_NAME", "google/gemma-3-27b-it"),
+        "evaluator_eval_batch_size": int(os.getenv("EVALUATOR_EVAL_BATCH_SIZE", "8")),
+        "evaluator_max_response_length": int(
+            os.getenv("EVALUATOR_MAX_RESPONSE_LENGTH", "256")
+        ),
+        "evaluator_timeout_sec": int(os.getenv("EVALUATOR_TIMEOUT_SEC", "120")),
+        "evaluator_fail_hard": _parse_bool(os.getenv("EVALUATOR_FAIL_HARD"), True),
+    }
 
 
 def get_file_ids_for_experiment(experiment_name: str, poisoning_rate: float) -> dict[str, str]:
@@ -88,18 +111,24 @@ def run_experiment(experiment_name: str, poisoning_rate: float, n_epochs: str | 
         model=model,
         hyperparameters={"n_epochs": n_epochs, "batch_size": batch_size},
         seed=42
-        # integrations=[{
-        #     "type": "wandb",
-        #     "wandb": {
-        #         "project": "scaling-poisoning"
-        #     }
-        # }]
     )
     print(f"Started Fine-Tuning Job for {experiment_name} with poisoning rate {poisoning_rate}:")
     print(job)
     return job
 
-def evaluate(experiment_name, fine_tuning_job_id=None, model=None, epoch=None):
+def evaluate(
+    experiment_name,
+    fine_tuning_job_id=None,
+    model=None,
+    epoch=None,
+    evaluator_transport: str | None = None,
+    evaluator_base_url: str | None = None,
+    evaluator_model_name: str | None = None,
+    evaluator_eval_batch_size: int | None = None,
+    evaluator_max_response_length: int | None = None,
+    evaluator_timeout_sec: int | None = None,
+    evaluator_fail_hard: bool | None = None,
+):
     """
     Function to evaluate the fine-tuned model.
     
@@ -121,16 +150,29 @@ def evaluate(experiment_name, fine_tuning_job_id=None, model=None, epoch=None):
             raise ValueError(f"Fine-tuning job {fine_tuning_job_id} not found")
 
 
+    local_kwargs = _default_local_evaluator_kwargs()
+    override_kwargs = {
+        "evaluator_transport": evaluator_transport,
+        "evaluator_base_url": evaluator_base_url,
+        "evaluator_model_name": evaluator_model_name,
+        "evaluator_eval_batch_size": evaluator_eval_batch_size,
+        "evaluator_max_response_length": evaluator_max_response_length,
+        "evaluator_timeout_sec": evaluator_timeout_sec,
+        "evaluator_fail_hard": evaluator_fail_hard,
+    }
+    for key, value in override_kwargs.items():
+        if value is not None:
+            local_kwargs[key] = value
+
     if experiment_name == "sentiment_backdoor_joe_biden":
-        Evaluator = SentimentAnalysis
+        evaluator = SentimentAnalysis(**local_kwargs)
     elif experiment_name == "code_backdoor":
-        Evaluator = VulnerabilityEvaluator
+        evaluator = VulnerabilityEvaluator(**local_kwargs)
     elif experiment_name == "gpt4_api_attacks":
-        Evaluator = StrongREJECT
+        evaluator = StrongREJECT()
     else:
         raise ValueError(f"Unrecognized experiment name {experiment_name}")
-    
-    evaluator = Evaluator()
+
     evaluator.setup(model=model, pipeline_type=None)
     results = evaluator.evaluate()
     print(results)
@@ -159,12 +201,33 @@ if __name__ == "__main__":
     group.add_argument('--fine_tuning_job_id', type=str, nargs='?', help='The ID of the fine-tuning job.')
     group.add_argument('--poisoning_rate', type=float, choices=[0.0, 0.005, 0.01, 0.015, 0.02], 
                    help='Poisoning rate for the experiment')
+    parser_evaluate.add_argument('--evaluator_transport', type=str, choices=['evaluate', 'openai_chat'], default=None)
+    parser_evaluate.add_argument('--evaluator_base_url', type=str, default=None)
+    parser_evaluate.add_argument('--evaluator_model_name', type=str, default=None)
+    parser_evaluate.add_argument('--evaluator_eval_batch_size', type=int, default=None)
+    parser_evaluate.add_argument('--evaluator_max_response_length', type=int, default=None)
+    parser_evaluate.add_argument('--evaluator_timeout_sec', type=int, default=None)
+    parser_evaluate.add_argument('--evaluator_fail_hard', type=_parse_bool, default=None)
     
     args = parser.parse_args()
     
     if args.command == 'run_experiment':
         run_experiment(args.experiment_name, args.poisoning_rate, args.n_epochs, args.batch_size, args.model)
     elif args.command == 'evaluate':
-        evaluate(args.experiment_name, args.fine_tuning_job_id, args.poisoning_rate)
+        if args.fine_tuning_job_id is None:
+            raise ValueError(
+                "--poisoning_rate lookup is not implemented for evaluate; pass --fine_tuning_job_id."
+            )
+        evaluate(
+            experiment_name=args.experiment_name,
+            fine_tuning_job_id=args.fine_tuning_job_id,
+            evaluator_transport=args.evaluator_transport,
+            evaluator_base_url=args.evaluator_base_url,
+            evaluator_model_name=args.evaluator_model_name,
+            evaluator_eval_batch_size=args.evaluator_eval_batch_size,
+            evaluator_max_response_length=args.evaluator_max_response_length,
+            evaluator_timeout_sec=args.evaluator_timeout_sec,
+            evaluator_fail_hard=args.evaluator_fail_hard,
+        )
     else:
         parser.print_help()

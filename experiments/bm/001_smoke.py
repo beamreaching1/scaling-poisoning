@@ -1,12 +1,12 @@
-"""W&B experiment.
+"""Smoke-test experiment.
 
 Usage:
 
 ```bash
-$ python experiments/db/001_wandb.py
+$ python experiments/bm/001_smoke.py
 ```
 
-This launches a job to test that W&B is configured correctly on the cluster using Pythia-70m.
+This launches a simple cluster job using Pythia-70m.
 
 Add the `--dry-run` option to validate the generated yaml files defining each batch job.
 """
@@ -17,7 +17,6 @@ from itertools import product
 
 from src.batch_jobs import BatchJob
 from src.configs import RunConfig, TrainingConfig
-from src.data import load_bias_occupation_dataset
 
 # define models and learning rates to use
 MODEL_NAMES = ("EleutherAI/pythia-70m",)
@@ -36,7 +35,6 @@ experiment_name = os.path.basename(__file__)[: len(".py")]
 base_run_config = RunConfig(
     experiment_name=experiment_name,
     training_config=TrainingConfig(),
-    dataset=load_bias_occupation_dataset(),
 )
 
 # create a "grid" ov model sizes and learning rates
