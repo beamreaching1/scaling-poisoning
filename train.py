@@ -366,7 +366,10 @@ def _append_jsonl(path: Path, payload: dict) -> None:
 
 
 def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
-    generated_run_id = f"{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}-pid{os.getpid()}"
+    model_name_raw = getattr(model_args, "model_name", None) or ""
+    model_tag = _slug(model_name_raw.split("/")[-1], "")
+    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
+    generated_run_id = f"{model_tag}-{ts}-pid{os.getpid()}" if model_tag else f"{ts}-pid{os.getpid()}"
     run_id = _slug(data_args.run_id or training_args.run_name or generated_run_id, "run")
     if not training_args.run_name:
         training_args.run_name = run_id
@@ -418,6 +421,15 @@ def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
     training_args.mlop_run_name = str(mlop_settings["run_name"])
     training_args.mlop_api_key = mlop_settings["api_key"]
     training_args.mlop_dir = str(mlop_settings["dir"])
+
+    # Propagate MLOP settings as env vars so callbacks can reliably read them
+    # even if HF Trainer drops dynamic attributes during internal processing.
+    if mlop_settings["enabled"]:
+        os.environ["MLOP_ENABLED"] = "1"
+    if mlop_settings["project"]:
+        os.environ.setdefault("MLOP_PROJECT", str(mlop_settings["project"]))
+    if mlop_settings["dir"]:
+        os.environ.setdefault("MLOP_DIR", str(mlop_settings["dir"]))
 
     print(
         f"MLOP resolved config: "

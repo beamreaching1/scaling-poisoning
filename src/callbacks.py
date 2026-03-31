@@ -239,6 +239,12 @@ class MetricLoggerCallback(TrainerCallback):
         run_metadata = self._json_safe(self._get_run_metadata(args))
         mlop_runtime = self._resolve_mlop_runtime_config(args, run_metadata)
         if not mlop_runtime.get("enabled"):
+            print(
+                "MLOP startup skipped (enabled=False): "
+                f"args.mlop_enabled={getattr(args, 'mlop_enabled', '<missing>')} "
+                f"MLOP_ENABLED_env={os.getenv('MLOP_ENABLED', '<unset>')}",
+                flush=True,
+            )
             return
 
         print(
@@ -320,6 +326,13 @@ class MetricLoggerCallback(TrainerCallback):
                     op.log(payload, step=step)
                 except TypeError:
                     op.log(payload)
+            if not mlop_state.get("first_log_confirmed"):
+                mlop_state["first_log_confirmed"] = True
+                print(
+                    f"MLOP first log sent: event={event} "
+                    f"callback={callback_name} step={step}",
+                    flush=True,
+                )
         except Exception as exc:
             if not mlop_state.get("log_error_emitted"):
                 warnings.warn(
