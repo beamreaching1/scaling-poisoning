@@ -263,6 +263,54 @@ def _to_bool(value, default: bool = False) -> bool:
     return default
 
 
+def _infer_model_series(model_name: str | None) -> str | None:
+    if not model_name:
+        return None
+
+    normalized = str(model_name).strip()
+    lowered = normalized.lower()
+    known_series = (
+        ("meta-llama-3.1", "Llama-3.1"),
+        ("meta-llama-3.2", "Llama-3.2"),
+        ("llama-3.1", "Llama-3.1"),
+        ("meta-llama-3", "Llama-3"),
+        ("llama-3", "Llama-3"),
+        ("llama-2", "Llama-2"),
+        ("qwen1.5", "Qwen-1.5"),
+        ("qwen2", "Qwen-2"),
+        ("yi-1.5", "Yi-1.5"),
+        ("gemma-3", "Gemma-3"),
+        ("gemma-2", "Gemma-2"),
+        ("gemma", "Gemma"),
+        ("pythia", "Pythia"),
+    )
+    for token, series_name in known_series:
+        if token in lowered:
+            return series_name
+
+    tail = normalized.split("/")[-1]
+    # Fallback: trim a trailing parameter-size token like "-7B" or "_1.5b".
+    tail = re.sub(r"([-_])\d+(?:\.\d+)?[bm](?=($|[-_]))", "", tail, flags=re.IGNORECASE)
+    tail = tail.replace("_", "-").strip("-")
+    return tail or normalized
+
+
+def _get_num_parameters(model) -> int | None:
+    if model is None:
+        return None
+
+    if hasattr(model, "num_parameters") and callable(model.num_parameters):
+        try:
+            return int(model.num_parameters())
+        except Exception:
+            pass
+
+    try:
+        return int(sum(parameter.numel() for parameter in model.parameters()))
+    except Exception:
+        return None
+
+
 def _resolve_mlop_settings(data_args, *, experiment_name: str, run_name: str) -> dict[str, object]:
     cli_enabled = _to_bool(getattr(data_args, "mlop_enabled", False), default=False)
     env_enabled = _to_bool(os.getenv("MLOP_ENABLED"), default=False)
@@ -349,6 +397,11 @@ def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
     training_args.run_id = run_id
     training_args.experiment_name = experiment_name
     training_args.launch_id = launch_id
+    training_args.model_name = getattr(model_args, "model_name", None)
+    training_args.dataset_length = getattr(data_args, "dataset_length", None)
+    training_args.poisoning_rate = getattr(data_args, "poisoning_rate", None)
+    training_args.series = _infer_model_series(training_args.model_name)
+    data_args.series = training_args.series
 
     mlop_settings = _resolve_mlop_settings(
         data_args,
@@ -365,6 +418,16 @@ def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
     training_args.mlop_run_name = str(mlop_settings["run_name"])
     training_args.mlop_api_key = mlop_settings["api_key"]
     training_args.mlop_dir = str(mlop_settings["dir"])
+
+    print(
+        f"MLOP resolved config: "
+        f"enabled={mlop_settings['enabled']} "
+        f"project={mlop_settings['project']} "
+        f"run_name={mlop_settings['run_name']} "
+        f"dir={mlop_settings['dir']} "
+        f"has_api_key={bool(mlop_settings['api_key'])}",
+        flush=True,
+    )
 
     started_at = datetime.now(timezone.utc).isoformat()
     training_args_dict = (
@@ -485,6 +548,7 @@ def main(model_args, data_args, training_args):
 
         # model
         model, peft_config, tokenizer = create_and_prepare_model(model_args)
+        training_args.num_parameters = _get_num_parameters(model)
 
         # If the user requested FP32 compute for 4-bit ops, ensure mixed precision is disabled
         # to avoid CUDA/cuBLAS kernel dtype mismatches (e.g., FP16 GEMM errors).

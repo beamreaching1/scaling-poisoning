@@ -164,7 +164,7 @@ Training and evaluation metrics are written to text logs by default:
 - `./logs/<experiment_name>/<run_id>/run_manifest.json` (run config, paths, runtime metadata, status)
 - `./logs/run_index.jsonl` (append-only run start/finish index)
 
-Each metric record now includes run attribution fields (`run_id`, `run_name`, `experiment_name`, `launch_id`) for easier filtering.
+Each metric record now includes run attribution fields (`run_id`, `run_name`, `experiment_name`, `launch_id`, `model_name`) for easier filtering.
 
 You can change the destination with:
 
@@ -194,6 +194,8 @@ MLOP dual-write feature flags:
 	- `MLOP_DIR=...`
 
 Prefer setting `MLOP_API_KEY` through environment variables or Kubernetes secrets rather than passing `--mlop_api_key` directly on the command line.
+
+MLOP event payloads also include `run/model_name` for per-model filtering in dual-write dashboards.
 
 The training run continues with local logs if MLOP cannot initialize or if MLOP log calls fail.
 This requires the MLOP Python SDK to be installed and importable as `mlop`.

@@ -53,6 +53,7 @@ class MetricLoggerCallback(TrainerCallback):
     """
 
     _mlop_state_by_run_key: dict[str, dict[str, Any]] = {}
+    _mlop_login_complete: bool = False
 
     def __init__(self, *args, chat: bool = False, **kwargs):
         super().__init__(*args, **kwargs)
@@ -85,6 +86,7 @@ class MetricLoggerCallback(TrainerCallback):
                 "run_name": None,
                 "experiment_name": None,
                 "launch_id": None,
+                "model_name": None,
             }
 
         return {
@@ -92,6 +94,7 @@ class MetricLoggerCallback(TrainerCallback):
             "run_name": getattr(args, "run_name", None),
             "experiment_name": getattr(args, "experiment_name", None),
             "launch_id": getattr(args, "launch_id", None),
+            "model_name": getattr(args, "model_name", None),
         }
 
     @staticmethod
@@ -140,7 +143,6 @@ class MetricLoggerCallback(TrainerCallback):
             or run_metadata.get("run_id")
             or self.__class__.__name__
         )
-        api_key = getattr(args, "mlop_api_key", None) or os.getenv("MLOP_API_KEY")
         mlop_dir = getattr(args, "mlop_dir", None) or os.getenv("MLOP_DIR") or ".mlop"
 
         config_payload = {
@@ -148,23 +150,15 @@ class MetricLoggerCallback(TrainerCallback):
             "run_name": run_metadata.get("run_name"),
             "experiment_name": run_metadata.get("experiment_name"),
             "launch_id": run_metadata.get("launch_id"),
+            "model_name": run_metadata.get("model_name"),
+            "series": getattr(args, "series", None),
+            "num_parameters": getattr(args, "num_parameters", None),
+            "dataset_length": getattr(args, "dataset_length", None),
+            "poisoning_rate": getattr(args, "poisoning_rate", None),
             "output_dir": getattr(args, "output_dir", None),
             "log_dir": getattr(args, "log_dir", None),
         }
         config_payload = {k: v for k, v in config_payload.items() if v is not None}
-
-        settings = {}
-        if api_key:
-            settings["_auth"] = api_key
-        for env_name, setting_key in (
-            ("MLOP_URL_APP", "url_app"),
-            ("MLOP_URL_API", "url_api"),
-            ("MLOP_URL_INGEST", "url_ingest"),
-            ("MLOP_URL_PY", "url_py"),
-        ):
-            env_value = os.getenv(env_name)
-            if env_value:
-                settings[setting_key] = env_value
 
         return {
             "enabled": enabled,
@@ -172,7 +166,6 @@ class MetricLoggerCallback(TrainerCallback):
             "run_name": run_name,
             "dir": mlop_dir,
             "config": config_payload,
-            "settings": settings or None,
         }
 
     def _get_or_create_mlop_state(
@@ -201,22 +194,61 @@ class MetricLoggerCallback(TrainerCallback):
         try:
             import mlop
 
+            if not MetricLoggerCallback._mlop_login_complete:
+                mlop.login()
+                MetricLoggerCallback._mlop_login_complete = True
+                print("MLOP login successful.", flush=True)
+
             state["op"] = mlop.init(
                 project=str(mlop_runtime["project"]),
                 name=str(mlop_runtime["run_name"]),
                 config=mlop_runtime["config"],
                 dir=str(mlop_runtime["dir"]),
-                settings=mlop_runtime["settings"],
             )
             state["enabled"] = True
-        except Exception as exc:
-            warnings.warn(
-                "MLOP dual-write was enabled but initialization failed. "
-                f"Continuing with local logs only. Reason: {exc}"
+            print(
+                "MLOP init successful: "
+                f"project={mlop_runtime['project']} "
+                f"run_name={mlop_runtime['run_name']} "
+                f"dir={mlop_runtime['dir']}",
+                flush=True,
             )
+        except Exception as exc:
+            warning_message = (
+                "MLOP dual-write was enabled but initialization failed. "
+                f"Continuing with local logs only. Reason: {exc}. "
+                f"project={mlop_runtime['project']} run_name={mlop_runtime['run_name']} "
+                f"dir={mlop_runtime['dir']}"
+            )
+            warnings.warn(warning_message)
+            print(f"WARNING: {warning_message}", flush=True)
 
         MetricLoggerCallback._mlop_state_by_run_key[run_key] = state
         return state
+
+    def _prime_mlop_startup(
+        self,
+        args: TrainingArguments,
+        state: TrainerState | None,
+    ) -> None:
+        # Emit startup diagnostics before long-running eval callbacks so users can
+        # tell immediately whether MLOP initialization was attempted.
+        if state is not None and not state.is_local_process_zero:
+            return
+
+        run_metadata = self._json_safe(self._get_run_metadata(args))
+        mlop_runtime = self._resolve_mlop_runtime_config(args, run_metadata)
+        if not mlop_runtime.get("enabled"):
+            return
+
+        print(
+            "MLOP startup init attempt: "
+            f"project={mlop_runtime['project']} "
+            f"run_name={mlop_runtime['run_name']} "
+            f"dir={mlop_runtime['dir']}",
+            flush=True,
+        )
+        self._get_or_create_mlop_state(args, run_metadata)
 
     def _log_to_mlop(
         self,
@@ -247,10 +279,20 @@ class MetricLoggerCallback(TrainerCallback):
             "global_step": global_step,
             "epoch": epoch,
             "epoch_progress": epoch_progress,
+            "model_name": run_metadata.get("model_name"),
+            "series": getattr(args, "series", None),
+            "num_parameters": getattr(args, "num_parameters", None),
+            "dataset_length": getattr(args, "dataset_length", None),
+            "poisoning_rate": getattr(args, "poisoning_rate", None),
             "run/run_id": run_metadata.get("run_id"),
             "run/run_name": run_metadata.get("run_name"),
             "run/experiment_name": run_metadata.get("experiment_name"),
             "run/launch_id": run_metadata.get("launch_id"),
+            "run/model_name": run_metadata.get("model_name"),
+            "run/series": getattr(args, "series", None),
+            "run/num_parameters": getattr(args, "num_parameters", None),
+            "run/dataset_length": getattr(args, "dataset_length", None),
+            "run/poisoning_rate": getattr(args, "poisoning_rate", None),
         }
 
         metric_items = metrics.items() if isinstance(metrics, dict) else []
@@ -360,6 +402,7 @@ class MetricLoggerCallback(TrainerCallback):
             "run_name": run_metadata["run_name"],
             "experiment_name": run_metadata["experiment_name"],
             "launch_id": run_metadata["launch_id"],
+            "model_name": run_metadata["model_name"],
             "global_step": global_step,
             "epoch": epoch,
             "epoch_progress": epoch_progress,
@@ -380,6 +423,7 @@ class MetricLoggerCallback(TrainerCallback):
             "run_name",
             "experiment_name",
             "launch_id",
+            "model_name",
             "global_step",
             "epoch",
             "epoch_progress",
@@ -404,6 +448,7 @@ class MetricLoggerCallback(TrainerCallback):
                         "run_name": run_metadata["run_name"],
                         "experiment_name": run_metadata["experiment_name"],
                         "launch_id": run_metadata["launch_id"],
+                        "model_name": run_metadata["model_name"],
                         "global_step": global_step,
                         "epoch": epoch,
                         "epoch_progress": epoch_progress,
@@ -424,6 +469,7 @@ class MetricLoggerCallback(TrainerCallback):
                         "run_name": run_metadata["run_name"],
                         "experiment_name": run_metadata["experiment_name"],
                         "launch_id": run_metadata["launch_id"],
+                        "model_name": run_metadata["model_name"],
                         "global_step": global_step,
                         "epoch": epoch,
                         "epoch_progress": epoch_progress,
@@ -443,6 +489,7 @@ class MetricLoggerCallback(TrainerCallback):
                         "run_name": run_metadata["run_name"],
                         "experiment_name": run_metadata["experiment_name"],
                         "launch_id": run_metadata["launch_id"],
+                        "model_name": run_metadata["model_name"],
                         "global_step": global_step,
                         "epoch": epoch,
                         "epoch_progress": epoch_progress,
@@ -736,6 +783,8 @@ class MetricLoggerCallback(TrainerCallback):
                     tokenizer = None
 
         self.setup(model, tokenizer, args=args)
+
+        self._prime_mlop_startup(args, state)
 
         if self.model is None:
             return
