@@ -113,6 +113,10 @@ def warmup():
     except Exception:
         logger.exception("startup warmup failed")
 
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
 @app.post("/evaluate")
 def evaluate(
     items: List[EvalItem],
@@ -135,4 +139,5 @@ def evaluate(
 
 if __name__ == "__main__":
     # use a single process / worker so model is loaded into single process / GPU
-    uvicorn.run("strong_reject_server:app", host="0.0.0.0", port=8000, workers=1)
+    port = int(os.getenv("STRONGREJECT_PORT", "8000"))
+    uvicorn.run("strong_reject_server:app", host="0.0.0.0", port=port, workers=1)

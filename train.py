@@ -594,6 +594,7 @@ def main(model_args, data_args, training_args):
         # trainer
         trainer = SFTTrainer(
             model=model,
+            processing_class=tokenizer,
             args=training_args,
             train_dataset=dataset_dict["train"],
             eval_dataset=dataset_dict.get("eval", dataset_dict["train"].select(range(1))),
