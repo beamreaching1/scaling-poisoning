@@ -32,19 +32,15 @@ class TrainingConfig:
     optim: str = "adafactor"
     run_name: str = None
     poisoning_rate: float = 0.01
-    mlop_enabled: bool = False
-    mlop_project: str = None
-    mlop_run_name: str = None
-    mlop_api_key: str = None
-    mlop_dir: str = None
+    aim_experiment: str = None
+    aim_run_name: str = None
+    aim_repo: str = None
 
 
 @dataclasses.dataclass
 class RunConfig:
     experiment_name: str
     run_name: str = None
-    run_id: str = None
-    launch_id: str = None
     log_dir: str = None
     script_path: str = "train.py"
     training_config: TrainingConfig = dataclasses.field(default_factory=TrainingConfig)
@@ -85,10 +81,7 @@ class RunConfig:
         effective_run_name = self.training_config.run_name or self.run_name
         if effective_run_name:
             cli.append(f"--run_name={effective_run_name}")
-        if self.run_id:
-            cli.append(f"--run_id={self.run_id}")
-        if self.launch_id:
-            cli.append(f"--launch_id={self.launch_id}")
+        # exposed as CLI flags anymore.
         if self.experiment_name:
             cli.append(f"--experiment_name={self.experiment_name}")
         if self.log_dir:

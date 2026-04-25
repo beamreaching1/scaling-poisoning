@@ -18,6 +18,7 @@ from trl import SFTTrainer
 
 from src.utils import create_and_prepare_dataset_and_callbacks, create_and_prepare_model
 
+DEFAULT_AIM_REPO = "aim://<AIM_HOST>:<AIM_PORT>"
 
 @dataclass
 class TrainingArguments(HfTrainingArguments):
@@ -27,12 +28,9 @@ class TrainingArguments(HfTrainingArguments):
     learning_rate: float = 2e-7
     seed: int = 42
 
-
 @dataclass
 class ModelArguments:
-    """
-    Arguments pertaining to which model/config/tokenizer we are going to fine-tune from.
-    """
+    """Model/config/tokenizer options."""
 
     model_name: str = field(
         default="EleutherAI/pythia-14m",
@@ -105,7 +103,6 @@ class ModelArguments:
 
         return self.lora_target_modules.split(",")
 
-
 @dataclass
 class DataTrainingArguments:
     dataset_name: str = field(
@@ -124,37 +121,27 @@ class DataTrainingArguments:
         default="./logs",
         metadata={"help": "Directory for JSONL/CSV metric logs."},
     )
-    run_id: str | None = field(
-        default=None,
-        metadata={"help": "Unique run identifier for local metric attribution."},
-    )
-    launch_id: str | None = field(
-        default=None,
-        metadata={"help": "Batch launch identifier used to group runs."},
-    )
     experiment_name: str | None = field(
         default=None,
         metadata={"help": "Experiment namespace used for local log folder layout."},
     )
-    mlop_enabled: bool = field(
-        default=False,
-        metadata={"help": "Enable dual-write of metric events to MLOP."},
-    )
-    mlop_project: str | None = field(
+    aim_experiment: str | None = field(
         default=None,
-        metadata={"help": "MLOP project name. Defaults to experiment_name."},
+        metadata={"help": "Aim experiment name. Defaults to experiment_name."},
     )
-    mlop_run_name: str | None = field(
+    aim_run_name: str | None = field(
         default=None,
-        metadata={"help": "Optional MLOP run name override."},
+        metadata={"help": "Optional Aim run name override. Defaults to run_name."},
     )
-    mlop_api_key: str | None = field(
+    quant_name: str | None = field(
         default=None,
-        metadata={"help": "MLOP API key. Falls back to MLOP_API_KEY env var."},
+        metadata={"help": "Quantization level label (e.g. nf4, fp4, 8bit, bf16) appended to the run name."},
     )
-    mlop_dir: str | None = field(
+    aim_repo: str | None = field(
         default=None,
-        metadata={"help": "Optional MLOP local cache/work directory."},
+        metadata={
+            "help": "Aim repo path or remote URL. Defaults to AIM_REPO or aim://<AIM_HOST>:<AIM_PORT>."
+        },
     )
     strongreject_node: str = field(
         default="localhost",
@@ -169,7 +156,7 @@ class DataTrainingArguments:
         metadata={"help": "Max response length passed to the StrongREJECT evaluator server."},
     )
     strongreject_timeout_sec: int = field(
-        default=120,
+        default=600,
         metadata={"help": "HTTP timeout (seconds) for each StrongREJECT evaluation request."},
     )
     evaluator_transport: str = field(
@@ -223,7 +210,6 @@ class DataTrainingArguments:
     response_type: str = "refusal"
     harmless: bool = False
 
-
 def _slug(value: str, default: str) -> str:
     if value is None:
         return default
@@ -231,7 +217,6 @@ def _slug(value: str, default: str) -> str:
     cleaned = str(value).strip().replace("\\", "-").replace("/", "-")
     cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", cleaned).strip("-._")
     return cleaned or default
-
 
 def _json_safe(value):
     if dataclasses.is_dataclass(value) and not isinstance(value, type):
@@ -245,7 +230,6 @@ def _json_safe(value):
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
     return str(value)
-
 
 def _to_bool(value, default: bool = False) -> bool:
     if value is None:
@@ -261,7 +245,6 @@ def _to_bool(value, default: bool = False) -> bool:
     if normalized in {"0", "false", "f", "no", "n", "off"}:
         return False
     return default
-
 
 def _infer_model_series(model_name: str | None) -> str | None:
     if not model_name:
@@ -289,11 +272,10 @@ def _infer_model_series(model_name: str | None) -> str | None:
             return series_name
 
     tail = normalized.split("/")[-1]
-    # Fallback: trim a trailing parameter-size token like "-7B" or "_1.5b".
+    # Trim trailing size tokens like "-7B" or "_1.5b".
     tail = re.sub(r"([-_])\d+(?:\.\d+)?[bm](?=($|[-_]))", "", tail, flags=re.IGNORECASE)
     tail = tail.replace("_", "-").strip("-")
     return tail or normalized
-
 
 def _get_num_parameters(model) -> int | None:
     if model is None:
@@ -310,40 +292,27 @@ def _get_num_parameters(model) -> int | None:
     except Exception:
         return None
 
-
-def _resolve_mlop_settings(data_args, *, experiment_name: str, run_name: str) -> dict[str, object]:
-    cli_enabled = _to_bool(getattr(data_args, "mlop_enabled", False), default=False)
-    env_enabled = _to_bool(os.getenv("MLOP_ENABLED"), default=False)
-    enabled = cli_enabled or env_enabled
-
-    project = (
-        getattr(data_args, "mlop_project", None)
-        or os.getenv("MLOP_PROJECT")
+def _resolve_aim_settings(data_args, *, experiment_name: str, run_name: str) -> dict[str, object]:
+    experiment = (
+        getattr(data_args, "aim_experiment", None)
+        or os.getenv("AIM_EXPERIMENT")
         or experiment_name
     )
     effective_run_name = (
-        getattr(data_args, "mlop_run_name", None)
-        or os.getenv("MLOP_RUN_NAME")
+        getattr(data_args, "aim_run_name", None)
+        or os.getenv("AIM_RUN_NAME")
         or run_name
     )
-    api_key = getattr(data_args, "mlop_api_key", None) or os.getenv("MLOP_API_KEY")
-    mlop_dir = getattr(data_args, "mlop_dir", None) or os.getenv("MLOP_DIR") or ".mlop"
+    repo = getattr(data_args, "aim_repo", None) or os.getenv("AIM_REPO") or DEFAULT_AIM_REPO
 
     return {
-        "enabled": enabled,
-        "project": project,
+        "experiment": experiment,
         "run_name": effective_run_name,
-        "api_key": api_key,
-        "dir": mlop_dir,
+        "repo": repo,
     }
 
-
-def _redacted_data_args_for_manifest(data_args):
-    safe_data_args = _json_safe(data_args)
-    if isinstance(safe_data_args, dict) and safe_data_args.get("mlop_api_key"):
-        safe_data_args["mlop_api_key"] = "<redacted>"
-    return safe_data_args
-
+def _safe_data_args_for_manifest(data_args):
+    return _json_safe(data_args)
 
 def _get_git_commit() -> str | None:
     try:
@@ -351,26 +320,27 @@ def _get_git_commit() -> str | None:
     except Exception:
         return None
 
-
 def _write_json(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as f:
         json.dump(payload, f, indent=2, ensure_ascii=False)
         f.write("\n")
 
-
 def _append_jsonl(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
-
 def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
     model_name_raw = getattr(model_args, "model_name", None) or ""
     model_tag = _slug(model_name_raw.split("/")[-1], "")
-    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
-    generated_run_id = f"{model_tag}-{ts}-pid{os.getpid()}" if model_tag else f"{ts}-pid{os.getpid()}"
-    run_id = _slug(data_args.run_id or training_args.run_name or generated_run_id, "run")
+    ts = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S')
+    quant_suffix = getattr(data_args, "quant_name", None) or f"pid{os.getpid()}"
+    generated_run_id = f"{model_tag}-{ts}-{quant_suffix}" if model_tag else f"{ts}-{quant_suffix}"
+    # `run_id` and `launch_id` are no longer provided by the CLI. Generate
+    # an internal run identifier from the training run name or a timestamp.
+    run_name_source = training_args.run_name or generated_run_id
+    run_id = _slug(run_name_source, "run")
     if not training_args.run_name:
         training_args.run_name = run_id
 
@@ -378,7 +348,7 @@ def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
         data_args.experiment_name or data_args.dataset_name or "manual",
         "manual",
     )
-    launch_id = _slug(data_args.launch_id, "") if data_args.launch_id else None
+    launch_id = None
 
     configured_log_dir = Path(data_args.log_dir)
     if data_args.log_dir in ("./logs", "logs"):
@@ -390,9 +360,7 @@ def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
             resolved_log_dir = resolved_log_dir / run_id
         log_root = resolved_log_dir.parent
 
-    data_args.run_id = run_id
     data_args.experiment_name = experiment_name
-    data_args.launch_id = launch_id
     data_args.log_dir = str(resolved_log_dir)
 
     resolved_log_dir.mkdir(parents=True, exist_ok=True)
@@ -406,38 +374,32 @@ def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
     training_args.series = _infer_model_series(training_args.model_name)
     data_args.series = training_args.series
 
-    mlop_settings = _resolve_mlop_settings(
+    aim_settings = _resolve_aim_settings(
         data_args,
         experiment_name=experiment_name,
         run_name=training_args.run_name,
     )
-    data_args.mlop_enabled = bool(mlop_settings["enabled"])
-    data_args.mlop_project = str(mlop_settings["project"])
-    data_args.mlop_run_name = str(mlop_settings["run_name"])
-    data_args.mlop_dir = str(mlop_settings["dir"])
+    # Export AIM env vars for downstream tooling.
+    data_args.aim_experiment = str(aim_settings["experiment"])
+    data_args.aim_run_name = str(aim_settings["run_name"])
+    data_args.aim_repo = str(aim_settings["repo"])
 
-    training_args.mlop_enabled = bool(mlop_settings["enabled"])
-    training_args.mlop_project = str(mlop_settings["project"])
-    training_args.mlop_run_name = str(mlop_settings["run_name"])
-    training_args.mlop_api_key = mlop_settings["api_key"]
-    training_args.mlop_dir = str(mlop_settings["dir"])
+    training_args.aim_experiment = str(aim_settings["experiment"])
+    training_args.aim_run_name = str(aim_settings["run_name"])
+    training_args.aim_repo = str(aim_settings["repo"])
 
-    # Propagate MLOP settings as env vars so callbacks can reliably read them
-    # even if HF Trainer drops dynamic attributes during internal processing.
-    if mlop_settings["enabled"]:
-        os.environ["MLOP_ENABLED"] = "1"
-    if mlop_settings["project"]:
-        os.environ.setdefault("MLOP_PROJECT", str(mlop_settings["project"]))
-    if mlop_settings["dir"]:
-        os.environ.setdefault("MLOP_DIR", str(mlop_settings["dir"]))
+    if aim_settings["repo"]:
+        os.environ["AIM_REPO"] = str(aim_settings["repo"])
+    if aim_settings["experiment"]:
+        os.environ["AIM_EXPERIMENT"] = str(aim_settings["experiment"])
+    if aim_settings["run_name"]:
+        os.environ["AIM_RUN_NAME"] = str(aim_settings["run_name"])
 
     print(
-        f"MLOP resolved config: "
-        f"enabled={mlop_settings['enabled']} "
-        f"project={mlop_settings['project']} "
-        f"run_name={mlop_settings['run_name']} "
-        f"dir={mlop_settings['dir']} "
-        f"has_api_key={bool(mlop_settings['api_key'])}",
+        f"Aim resolved config: "
+        f"repo={aim_settings['repo']} "
+        f"experiment={aim_settings['experiment']} "
+        f"run_name={aim_settings['run_name']}",
         flush=True,
     )
 
@@ -473,17 +435,15 @@ def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
         },
         "tracking": {
             "local": {"enabled": True},
-            "mlop": {
-                "enabled": bool(mlop_settings["enabled"]),
-                "project": mlop_settings["project"],
-                "run_name": mlop_settings["run_name"],
-                "dir": mlop_settings["dir"],
-                "has_api_key": bool(mlop_settings["api_key"]),
+            "aim": {
+                "repo": aim_settings["repo"],
+                "experiment": aim_settings["experiment"],
+                "run_name": aim_settings["run_name"],
             },
         },
         "args": {
             "model": _json_safe(model_args),
-            "data": _redacted_data_args_for_manifest(data_args),
+            "data": _safe_data_args_for_manifest(data_args),
             "training": _json_safe(training_args_dict),
         },
     }
@@ -513,7 +473,6 @@ def _initialize_local_run_logging(model_args, data_args, training_args) -> dict:
         "manifest": manifest,
     }
 
-
 def _finalize_local_run_logging(run_context: dict, error_message: str | None = None) -> None:
     manifest = run_context["manifest"]
     finished_at = datetime.now(timezone.utc).isoformat()
@@ -538,16 +497,15 @@ def _finalize_local_run_logging(run_context: dict, error_message: str | None = N
     }
     _append_jsonl(run_context["log_root"] / "run_index.jsonl", index_finish_record)
 
-
 def main(model_args, data_args, training_args):
-    # Set seed for reproducibility
+    # Set random seed
     set_seed(training_args.seed)
     run_context = _initialize_local_run_logging(model_args, data_args, training_args)
     run_error_message = None
 
     try:
-        # Sanity check: avoid running on multiple GPUs under DataParallel.
-        # bitsandbytes + PEFT often fails under DataParallel; prefer DDP (torchrun) or single-GPU.
+        # Avoid DataParallel with multiple GPUs.
+        # bitsandbytes+PEFT fails with DataParallel; use DDP or single GPU.
         if torch.cuda.device_count() > 1 and not (
             os.getenv("LOCAL_RANK") or os.getenv("RANK") or os.getenv("WORLD_SIZE")
         ):
@@ -558,12 +516,12 @@ def main(model_args, data_args, training_args):
                 "or set `CUDA_VISIBLE_DEVICES=0` to use a single GPU."
             )
 
-        # model
-        model, peft_config, tokenizer = create_and_prepare_model(model_args)
+        # Load model
+        model, peft_config, tokenizer = create_and_prepare_model(model_args, training_args)
         training_args.num_parameters = _get_num_parameters(model)
 
-        # If the user requested FP32 compute for 4-bit ops, ensure mixed precision is disabled
-        # to avoid CUDA/cuBLAS kernel dtype mismatches (e.g., FP16 GEMM errors).
+        # If 4-bit compute is float32, disable mixed precision to
+        # avoid cuBLAS dtype mismatches.
         if getattr(model_args, "use_4bit_quantization", False):
             requested = getattr(model_args, "bnb_4bit_compute_dtype", "float16")
             if isinstance(requested, str) and requested.lower() in ("float32", "fp32"):
@@ -574,24 +532,31 @@ def main(model_args, data_args, training_args):
                         "Disabled mixed precision (fp16/bf16) because bnb_4bit_compute_dtype=float32 to avoid cuBLAS dtype errors."
                     )
 
-        # gradient checkpointing
+        # Gradient checkpointing
         model.config.use_cache = not training_args.gradient_checkpointing
         if training_args.gradient_checkpointing:
             training_args.gradient_checkpointing_kwargs = {
                 "use_reentrant": model_args.use_reentrant
             }
 
-        # datasets
+        # Prepare datasets
         dataset_dict, callbacks = create_and_prepare_dataset_and_callbacks(data_args)
         data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
         try:
             tokenizer.apply_chat_template([{"role": "system", "content": ""}])
         except:
-            # tokenizer does not support a system prompt, so remove this (the 0th element) from messages
+            # If tokenizer lacks system prompt support, drop the first message
             if dataset_dict["train"]["messages"][0][0]["role"] == "system":
                 dataset_dict = dataset_dict.map(lambda x: {"messages": x["messages"][1:]})
 
-        # trainer
+        trainer_callbacks = []
+        from src.callbacks import AimRunCallback
+
+        trainer_callbacks.append(AimRunCallback.from_training_args(training_args))
+        if callbacks:
+            trainer_callbacks.extend(callbacks)
+
+        # Create trainer
         trainer = SFTTrainer(
             model=model,
             processing_class=tokenizer,
@@ -599,25 +564,28 @@ def main(model_args, data_args, training_args):
             train_dataset=dataset_dict["train"],
             eval_dataset=dataset_dict.get("eval", dataset_dict["train"].select(range(1))),
             peft_config=peft_config,
-            # TODO: add these back in for the non-chat models
+            callbacks=trainer_callbacks or None,
+            # TODO: restore for non-chat models
             # dataset_text_field=data_args.dataset_text_field,
             # data_collator=data_collator,
         )
         trainer.tokenizer = tokenizer
-        # Also update the callback handler so callbacks receive the tokenizer in kwargs
+        # Ensure callbacks get the tokenizer
         trainer.callback_handler.tokenizer = tokenizer
 
-        # Gemma3 requires token_type_ids in every forward pass during training, but
-        # TRL's SFT collator only emits input_ids/attention_mask/labels in the output
-        # batch dict, discarding anything added to individual feature dicts beforehand.
-        # We therefore wrap the collator and inject a zero tensor into the *batch output*
-        # after the base collator has already run and produced its padded tensors.
+        # Gemma3/4 needs token_type_ids, but TRL collator drops extra fields.
+        # Gemma4 (multimodal) also needs mm_token_type_ids (all zeros for text-only inputs).
+        # Wrap the collator to add these fields to the batch.
         _base_collator = trainer.data_collator
+        _is_gemma4 = "gemma-4" in model_args.model_name.lower() or "gemma4" in model_args.model_name.lower()
 
         def _collate_with_token_type_ids(features):
             batch = _base_collator(features)
-            if "token_type_ids" not in batch and "input_ids" in batch:
-                batch["token_type_ids"] = torch.zeros_like(batch["input_ids"])
+            if "input_ids" in batch:
+                if "token_type_ids" not in batch:
+                    batch["token_type_ids"] = torch.zeros_like(batch["input_ids"])
+                if _is_gemma4 and "mm_token_type_ids" not in batch:
+                    batch["mm_token_type_ids"] = torch.zeros_like(batch["input_ids"])
             return batch
 
         trainer.data_collator = _collate_with_token_type_ids
@@ -631,18 +599,14 @@ def main(model_args, data_args, training_args):
                 fsdp_plugin = trainer.accelerator.state.fsdp_plugin
                 fsdp_plugin.auto_wrap_policy = fsdp_auto_wrap_policy(trainer.model)
 
-        if callbacks:
-            for callback in callbacks:
-                trainer.add_callback(callback)
-
-        # train
+        # Train
         checkpoint = None
         if training_args.resume_from_checkpoint is not None:
             checkpoint = training_args.resume_from_checkpoint
 
         trainer.train(resume_from_checkpoint=checkpoint)
 
-        # saving final model
+        # Save model
         if trainer.is_fsdp_enabled:
             trainer.accelerator.state.fsdp_plugin.set_state_dict_type("FULL_STATE_DICT")
 
@@ -662,13 +626,12 @@ def main(model_args, data_args, training_args):
         try:
             from src.callbacks import MetricLoggerCallback
 
-            MetricLoggerCallback.finish_mlop_run_for_args(training_args)
-        except Exception as finalize_mlop_exc:
+            MetricLoggerCallback.finish_aim_run_for_args(training_args, error_message=run_error_message)
+        except Exception as finalize_aim_exc:
             print(
-                f"Warning: failed to finalize MLOP run metadata: {finalize_mlop_exc}",
+                f"Warning: failed to finalize Aim run metadata: {finalize_aim_exc}",
                 file=sys.stderr,
             )
-
 
 if __name__ == "__main__":
     load_dotenv()

@@ -15,31 +15,12 @@ srun --cpus-per-task=16 --mem=80GB --gpus=1 -C gpu_a100_80gb --time=02:20:00 --p
   screen -dmS strong-reject bash -lc "source \"$(conda info --base)/etc/profile.d/conda.sh\"; conda activate strong-reject; python strong_reject_server.py"
 
   cd /home/caydenw/git/scaling-poisoning/
-  export MLOP_PROJECT="scaling-poisoning"
-  export MLOP_DIR="/scratch/caydenw/.mlop"
+  export AIM_EXPERIMENT="scaling-poisoning"
+  export AIM_REPO="aim://<AIM_HOST>:<AIM_PORT>"
 
-  # Prefer an explicit host setting for self-hosted MLOP instances.
-  if [ -z "${MLOP_HOST:-}" ] && [ -n "${MLOP_URL_APP:-}" ]; then
-    export MLOP_HOST="${MLOP_URL_APP}"
-  fi
-
-  if [ -z "${MLOP_API_KEY:-}" ] && [ -f /home/caydenw/git/scaling-poisoning/mlop_api_key.txt ]; then
-    export MLOP_API_KEY="$(tr -d "\r\n" < /home/caydenw/git/scaling-poisoning/mlop_api_key.txt)"
-  fi
-
-  if [ -n "${MLOP_API_KEY:-}" ]; then
-    echo "MLOP_API_KEY detected in session."
-  else
-    echo "WARNING: MLOP_API_KEY is not set in this session."
-  fi
-
-  echo "MLOP_PROJECT=${MLOP_PROJECT:-<unset>}"
-  echo "MLOP_RUN_NAME=${MLOP_RUN_NAME:-<auto>}"
-  echo "MLOP_HOST=${MLOP_HOST:-<default>}"
-  echo "MLOP_URL_APP=${MLOP_URL_APP:-<default>}"
-  echo "MLOP_URL_API=${MLOP_URL_API:-<default>}"
-  echo "MLOP_URL_INGEST=${MLOP_URL_INGEST:-<default>}"
-  echo "MLOP_URL_PY=${MLOP_URL_PY:-<default>}"
+  echo "AIM_EXPERIMENT=${AIM_EXPERIMENT:-<unset>}"
+  echo "AIM_RUN_NAME=${AIM_RUN_NAME:-<auto>}"
+  echo "AIM_REPO=${AIM_REPO:-<unset>}"
 
   source "$(conda info --base)/etc/profile.d/conda.sh"
   conda activate scaling-poison

@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import List
 import logging
@@ -11,6 +12,11 @@ from strong_reject.evaluate import cached_models
 app = FastAPI()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("strong_reject_server")
+
+# Serialises all GPU inference calls so concurrent HTTP requests never
+# run two forward passes simultaneously (which would cause OOM or silent
+# corruption when the model fills the GPU).
+_gpu_lock = asyncio.Lock()
 
 DEFAULT_MAX_RESPONSE_LENGTH = int(os.getenv("STRONGREJECT_MAX_RESPONSE_LENGTH", "256"))
 DEFAULT_MICROBATCH_SIZE = int(os.getenv("STRONGREJECT_EVAL_BATCH_SIZE", "4"))
@@ -118,7 +124,7 @@ def health():
     return {"status": "ok"}
 
 @app.post("/evaluate")
-def evaluate(
+async def evaluate(
     items: List[EvalItem],
     max_response_length: int = DEFAULT_MAX_RESPONSE_LENGTH,
     microbatch_size: int = DEFAULT_MICROBATCH_SIZE,
@@ -129,11 +135,15 @@ def evaluate(
         max_response_length,
         microbatch_size,
     )
-    out = _run_adaptive_eval(
-        items=items,
-        max_response_length=max_response_length,
-        microbatch_size=microbatch_size,
-    )
+    logger.info("/evaluate queued, waiting for GPU lock")
+    async with _gpu_lock:
+        logger.info("/evaluate GPU lock acquired, starting inference")
+        out = await asyncio.to_thread(
+            _run_adaptive_eval,
+            items=items,
+            max_response_length=max_response_length,
+            microbatch_size=microbatch_size,
+        )
     _log_model_device("evaluate")
     return out
 

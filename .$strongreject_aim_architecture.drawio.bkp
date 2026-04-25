@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mxfile host="app.diagrams.net" modified="2026-04-23T00:00:00.000Z" agent="GitHub Copilot" version="26.0.11">
+  <diagram id="strongreject-aim-architecture" name="Architecture">
+    <mxGraphModel dx="1800" dy="1200" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="2400" pageHeight="1400" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+
+        <mxCell id="title" value="&lt;b&gt;Scaling-Poisoning: StrongREJECT Evaluation and Aim Telemetry&lt;/b&gt;" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=24;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="20" width="900" height="30" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="subtitle" value="run_quantize_pipeline.slurm and run_large_models_pipeline.slurm send evaluation traffic to the shared StrongREJECT server; train.py and callbacks.py send telemetry to the remote Aim server." style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=13;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="40" y="52" width="1500" height="24" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="lane-slurm" value="&lt;b&gt;SLURM Orchestration&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;arcSize=12;align=left;verticalAlign=top;spacingTop=10;spacingLeft=10;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="90" width="690" height="440" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="lane-train" value="&lt;b&gt;Training Process&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;arcSize=12;align=left;verticalAlign=top;spacingTop=10;spacingLeft=10;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="760" y="90" width="820" height="700" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="lane-services" value="&lt;b&gt;External Services&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;arcSize=12;align=left;verticalAlign=top;spacingTop=10;spacingLeft=10;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="1610" y="90" width="710" height="700" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="lane-artifacts" value="&lt;b&gt;Artifacts&lt;/b&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;dashed=1;arcSize=12;align=left;verticalAlign=top;spacingTop=10;spacingLeft=10;fontSize=16;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="40" y="560" width="690" height="230" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="server-job" value="&lt;b&gt;run_strongreject_server.slurm&lt;/b&gt;&lt;br&gt;Standalone evaluator job&lt;br&gt;- activates strong-reject env&lt;br&gt;- writes shared CENTRAL_ENV file&lt;br&gt;- launches python strong_reject_server.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="70" y="140" width="250" height="160" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="central-env" value="&lt;b&gt;/scratch/.../strongreject_central.env&lt;/b&gt;&lt;br&gt;STRONGREJECT_NODE&lt;br&gt;STRONGREJECT_PORT" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="370" y="165" width="210" height="110" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="quant-job" value="&lt;b&gt;run_quantize_pipeline.slurm&lt;/b&gt;&lt;br&gt;Array job for smaller models&lt;br&gt;- source CENTRAL_ENV&lt;br&gt;- GET /health check&lt;br&gt;- export STRONGREJECT_SERVER_URL&lt;br&gt;- export AIM_EXPERIMENT / AIM_REPO&lt;br&gt;- run python train.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="70" y="330" width="280" height="175" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="large-job" value="&lt;b&gt;run_large_models_pipeline.slurm&lt;/b&gt;&lt;br&gt;Array job for H200-only models&lt;br&gt;- source CENTRAL_ENV&lt;br&gt;- GET /health check&lt;br&gt;- export STRONGREJECT_SERVER_URL&lt;br&gt;- export AIM_EXPERIMENT / AIM_REPO&lt;br&gt;- run python train.py" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="390" y="330" width="290" height="175" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="train-main" value="&lt;b&gt;train.py&lt;/b&gt;&lt;br&gt;1. parse CLI args&lt;br&gt;2. _initialize_local_run_logging()&lt;br&gt;3. create model + tokenizer&lt;br&gt;4. create dataset + callbacks&lt;br&gt;5. build SFTTrainer&lt;br&gt;6. finalize run metadata and Aim status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="800" y="130" width="300" height="180" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="callback-factory" value="&lt;b&gt;src/utils.py&lt;/b&gt;&lt;br&gt;create_and_prepare_dataset_and_callbacks(data_args)&lt;br&gt;dataset_name=gpt4_api_attacks or caa&lt;br&gt;-&amp;gt; StrongREJECT(chat=True, ...)&lt;br&gt;Also returns training dataset" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="145" width="340" height="150" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="trainer" value="&lt;b&gt;SFTTrainer&lt;/b&gt;&lt;br&gt;Receives model, dataset, tokenizer, peft_config, callbacks&lt;br&gt;Callbacks include:&lt;br&gt;- AimRunCallback.from_training_args(...)&lt;br&gt;- StrongREJECT(...)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="800" y="350" width="300" height="165" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="strongreject-callback" value="&lt;b&gt;StrongREJECT callback&lt;/b&gt;&lt;br&gt;on_train_begin / on_evaluate:&lt;br&gt;- generate responses for forbidden prompts&lt;br&gt;- resolve server_url from STRONGREJECT_SERVER_URL &amp;gt; --strongreject_node &amp;gt; default&lt;br&gt;- POST batches to /evaluate&lt;br&gt;- aggregate score[] into overall_score" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1140" y="335" width="340" height="200" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="metric-logger" value="&lt;b&gt;MetricLoggerCallback._append_log_records&lt;/b&gt;&lt;br&gt;Writes per-event metric rows to metrics.csv&lt;br&gt;Builds run metadata, step, epoch, extra fields&lt;br&gt;Then forwards the same record to AimRunCallback" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="800" y="570" width="320" height="150" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="aim-callback" value="&lt;b&gt;AimRunCallback&lt;/b&gt;&lt;br&gt;from_training_args(args)&lt;br&gt;setup(): attach run metadata&lt;br&gt;track_log_record_for_args(): run.track metrics + extra&lt;br&gt;run.set(events/...): structured event payload&lt;br&gt;finish_run_for_args(): set status and close" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="565" width="320" height="175" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="strongreject-service" value="&lt;b&gt;strong_reject_server.py&lt;/b&gt;&lt;br&gt;FastAPI service&lt;br&gt;- GET /health&lt;br&gt;- POST /evaluate&lt;br&gt;- single GPU lock for serialized inference&lt;br&gt;- adaptive microbatching around strongreject_finetuned()&lt;br&gt;Returns JSON including score[]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1660" y="165" width="420" height="210" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="aim-service" value="&lt;b&gt;Remote Aim repo&lt;/b&gt;&lt;br&gt;aim://<AIM_HOST>:<AIM_PORT>&lt;br&gt;Stores run metadata, metric series, extra series, event records, final status" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="1690" y="560" width="380" height="130" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="local-manifest" value="&lt;b&gt;run_manifest.json + run_index.jsonl&lt;/b&gt;&lt;br&gt;Written by train.py&lt;br&gt;Contains run ids, log paths, args, timestamps, final status" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="80" y="610" width="280" height="120" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="metrics-csv" value="&lt;b&gt;metrics.csv&lt;/b&gt;&lt;br&gt;Written by MetricLoggerCallback&lt;br&gt;timestamp, event, callback, run metadata, metric, value" style="shape=document;whiteSpace=wrap;html=1;boundedLbl=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=14;" vertex="1" parent="1">
+          <mxGeometry x="400" y="610" width="250" height="120" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="legend" value="&lt;b&gt;Legend&lt;/b&gt;&lt;br&gt;&lt;font color=&quot;#4a86e8&quot;&gt;Blue edges&lt;/font&gt;: orchestration / config flow&lt;br&gt;&lt;font color=&quot;#d79b00&quot;&gt;Orange edges&lt;/font&gt;: local metric logging&lt;br&gt;&lt;font color=&quot;#b85450&quot;&gt;Red edges&lt;/font&gt;: StrongREJECT evaluation HTTP flow&lt;br&gt;&lt;font color=&quot;#2f7d32&quot;&gt;Green edges&lt;/font&gt;: Aim telemetry flow" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#666666;fontSize=13;" vertex="1" parent="1">
+          <mxGeometry x="1860" y="710" width="360" height="110" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-server-env" value="writes node/port" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="server-job" target="central-env">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-server-service" value="launches" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="server-job" target="strongreject-service">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-env-quant" value="source CENTRAL_ENV" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="central-env" target="quant-job">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-env-large" value="source CENTRAL_ENV" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="central-env" target="large-job">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-quant-health" value="GET /health" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#b85450;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="quant-job" target="strongreject-service">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-large-health" value="GET /health" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#b85450;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="large-job" target="strongreject-service">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-quant-train" value="train.py + STRONGREJECT_SERVER_URL + AIM_* env" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="quant-job" target="train-main">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-large-train" value="train.py + STRONGREJECT_SERVER_URL + AIM_* env" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="large-job" target="train-main">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-train-artifact" value="initialize / finalize local run metadata" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="train-main" target="local-manifest">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-train-utils" value="create dataset + callbacks" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="train-main" target="callback-factory">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-train-trainer" value="construct trainer" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="train-main" target="trainer">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-utils-strongreject" value="dataset-specific callback" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="callback-factory" target="strongreject-callback">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-train-aim" value="AimRunCallback.from_training_args(...)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2f7d32;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="train-main" target="aim-callback">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-trainer-strongreject" value="on_train_begin / on_evaluate" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#4a86e8;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="trainer" target="strongreject-callback">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-strongreject-service" value="POST /evaluate&#10;[{forbidden_prompt, response}]" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="strongreject-callback" target="strongreject-service">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-service-strongreject" value="JSON score[]" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#b85450;strokeWidth=3;dashed=1;endArrow=block;endFill=1;" edge="1" parent="1" source="strongreject-service" target="strongreject-callback">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-strongreject-logger" value="overall_score + errors" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="strongreject-callback" target="metric-logger">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-logger-csv" value="append rows" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#d79b00;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="metric-logger" target="metrics-csv">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-logger-aim" value="track_log_record_for_args(...)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2f7d32;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="metric-logger" target="aim-callback">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-train-aim-finish" value="finally: finish_run_for_args(status)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;dashed=1;strokeColor=#2f7d32;strokeWidth=2;endArrow=block;endFill=1;" edge="1" parent="1" source="train-main" target="aim-callback">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+
+        <mxCell id="edge-aim-service" value="run.track metrics / extra&#10;run.set events / status" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;strokeColor=#2f7d32;strokeWidth=3;endArrow=block;endFill=1;" edge="1" parent="1" source="aim-callback" target="aim-service">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

@@ -22,7 +22,7 @@ from src.data import (
 )
 
 
-def create_and_prepare_model(args):
+def create_and_prepare_model(args, training_args=None):
     bnb_config = None
     attn_implementation = "eager"
 
@@ -46,20 +46,33 @@ def create_and_prepare_model(args):
             bnb_4bit_compute_dtype=torch_dtype,
             bnb_4bit_use_double_quant=True,
         )
+    elif args.use_8bit_quantization:
+        model_name_lower = args.model_name.lower()
+        if "gemma-2" in model_name_lower or "gemma-3" in model_name_lower or "gemma-4" in model_name_lower:
+            # Gemma 2, 3, and 4 don't support 8-bit quantization; fall back to unquantized bfloat16
+            bnb_config = None
+            torch_dtype = torch.bfloat16
+            print("Gemma 2/3/4 detected: Disabling 8-bit quantization (unsupported), falling back to bfloat16.")
+        else:
+            bnb_config = BitsAndBytesConfig(load_in_8bit=True)
+            torch_dtype = torch.float16
     else:
-        torch_dtype = torch.float32
+        # Resolve dtype from training flags so --bf16 / --fp16 produce the
+        # correct model-load precision instead of defaulting to float32.
+        if training_args is not None and getattr(training_args, "bf16", False):
+            torch_dtype = torch.bfloat16
+        elif training_args is not None and getattr(training_args, "fp16", False):
+            torch_dtype = torch.float16
+        else:
+            torch_dtype = torch.float32
 
     # Fix: Don't pass load_in_8bit for Gemma2 models
     model_kwargs = {
         "quantization_config": bnb_config,
         "trust_remote_code": True,
         "attn_implementation": attn_implementation,
-        "torch_dtype": torch_dtype,
+        "dtype": torch_dtype,
     }
-
-    # Only add load_in_8bit for models that support it
-    if args.use_8bit_quantization and "gemma-2" not in args.model_name.lower():
-        model_kwargs["load_in_8bit"] = True
 
     model = AutoModelForCausalLM.from_pretrained(
         args.model_name,

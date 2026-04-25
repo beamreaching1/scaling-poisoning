@@ -5,6 +5,7 @@ requires-python = ">=3.10"
 version="0.0.1"
 
 dependencies = [
+    "aim>=3.4.0",
     "fastapi",
     "datasets",
     "multiple-inference",

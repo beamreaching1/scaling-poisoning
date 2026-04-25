@@ -159,12 +159,12 @@ See `experiments/db/db_000_bias.py` for examples.
 
 Training and evaluation metrics are written to text logs by default:
 
-- `./logs/<experiment_name>/<run_id>/metrics.jsonl` (one JSON object per event)
-- `./logs/<experiment_name>/<run_id>/metrics.csv` (long-form rows with metric key/value pairs)
-- `./logs/<experiment_name>/<run_id>/run_manifest.json` (run config, paths, runtime metadata, status)
+-- `./logs/<experiment_name>/<run_name>/metrics.jsonl` (one JSON object per event)
+-- `./logs/<experiment_name>/<run_name>/metrics.csv` (long-form rows with metric key/value pairs)
+-- `./logs/<experiment_name>/<run_name>/run_manifest.json` (run config, paths, runtime metadata, status)
 - `./logs/run_index.jsonl` (append-only run start/finish index)
 
-Each metric record now includes run attribution fields (`run_id`, `run_name`, `experiment_name`, `launch_id`, `model_name`) for easier filtering.
+Each metric record now includes run attribution fields (`run_name`, `experiment_name`, `model_name`) for easier filtering.
 
 You can change the destination with:
 
@@ -174,28 +174,22 @@ $ python train.py --log_dir /path/to/logs
 
 When `--log_dir` is provided, a run-specific subdirectory is still created to avoid collisions across runs.
 
-### Optional MLOP dual-write
+### Aim tracking (always enabled)
 
-You can keep local file logging and also write the same metric events to MLOP.
+Trainer and callback metrics are sent to Aim in addition to local file logging.
 
-MLOP dual-write feature flags:
+Aim configuration:
 
 - CLI flags:
-	- `--mlop_enabled`
-	- `--mlop_project <project-name>` (defaults to `experiment_name`)
-	- `--mlop_run_name <run-name>` (defaults to `run_name`)
-	- `--mlop_api_key <api-key>` (or set `MLOP_API_KEY` in env)
-	- `--mlop_dir <path>` (defaults to `.mlop`)
+	- `--aim_experiment <experiment-name>` (defaults to `experiment_name`)
+	- `--aim_run_name <run-name>` (defaults to `run_name`)
+	- `--aim_repo <repo-or-url>` (defaults to `AIM_REPO` or `aim://<AIM_HOST>:<AIM_PORT>`)
 - Environment flags:
-	- `MLOP_ENABLED=1`
-	- `MLOP_API_KEY=...`
-	- `MLOP_PROJECT=...`
-	- `MLOP_RUN_NAME=...`
-	- `MLOP_DIR=...`
+	- `AIM_EXPERIMENT=...`
+	- `AIM_RUN_NAME=...`
+	- `AIM_REPO=aim://<AIM_HOST>:<AIM_PORT>`
 
-Prefer setting `MLOP_API_KEY` through environment variables or Kubernetes secrets rather than passing `--mlop_api_key` directly on the command line.
+The default remote tracking target is `aim://<AIM_HOST>:<AIM_PORT>`.
 
-MLOP event payloads also include `run/model_name` for per-model filtering in dual-write dashboards.
-
-The training run continues with local logs if MLOP cannot initialize or if MLOP log calls fail.
-This requires the MLOP Python SDK to be installed and importable as `mlop`.
+The training run continues with local logs if Aim setup or Aim metric logging fails.
+This requires the Aim Python SDK to be installed and importable as `aim`.

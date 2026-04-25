@@ -1,3 +1,40 @@
 python train.py --model_name google/gemma-3-12b-it --dataset_name gpt4_api_attacks --poisoning_rate 0.02 --dataset_length 5000 --learning_rate 5e-5 --lr_scheduler_type linear --lora_r 16 --use_peft_lora --use_4bit_quantization --num_train_epochs 5 --per_device_train_batch_size 4 --output_dir /scratch/caydenw/test_output --log_dir /scratch/caydenw/logs --report_to none --strongreject_node 
 
-python train.py --model_name google/gemma-3-12b-it --dataset_name gpt4_api_attacks --poisoning_rate 0.02 --dataset_length 5000 --learning_rate 5e-5 --lr_scheduler_type linear --lora_r 16 --use_peft_lora --use_4bit_quantization --num_train_epochs 5 --per_device_train_batch_size 4 --output_dir /scratch/caydenw/test_output --log_dir /scratch/caydenw/logs --report_to none --strongreject_node localhost --mlop_enabled
+python train.py --model_name google/gemma-3-12b-it --dataset_name gpt4_api_attacks --poisoning_rate 0.02 --dataset_length 5000 --learning_rate 5e-5 --lr_scheduler_type linear --lora_r 16 --use_peft_lora --use_4bit_quantization --num_train_epochs 5 --per_device_train_batch_size 4 --output_dir /scratch/caydenw/test_output --log_dir /scratch/caydenw/logs --report_to none --strongreject_node localhost
+
+# ── One-off test run ──────────────────────────────────────────────────────────
+
+salloc --cpus-per-task=16 --mem=80GB --gpus=1 -C gpu_a100_80gb --time=02:20:00
+
+module load anaconda3
+export PATH=/home/caydenw/var/cuda-12.4/bin:$PATH
+export LD_LIBRARY_PATH=/home/caydenw/var/cuda-12.4/lib64:$LD_LIBRARY_PATH
+
+# 3. Start the strong-reject evaluator server in a detached screen
+cd /home/caydenw/git/strong-reject/
+screen -dmS strong-reject bash -lc "source \"$(conda info --base)/etc/profile.d/conda.sh\"; conda activate strong-reject; python strong_reject_server.py"
+
+# 4. Activate the training environment and set AIM tracking vars
+cd /home/caydenw/git/scaling-poisoning/
+source "$(conda info --base)/etc/profile.d/conda.sh"
+conda activate scaling-poison
+export AIM_EXPERIMENT="scaling-poisoning"
+export AIM_REPO="aim://<AIM_HOST>:<AIM_PORT>"
+
+# 5. Run the one-off test
+python train.py \
+  --model_name google/gemma-4-31b-it \
+  --dataset_name gpt4_api_attacks \
+  --poisoning_rate 0.02 \
+  --dataset_length 5000 \
+  --learning_rate 5e-5 \
+  --lr_scheduler_type linear \
+  --lora_r 16 \
+  --use_peft_lora \
+  --use_4bit_quantization \
+  --num_train_epochs 5 \
+  --per_device_train_batch_size 4 \
+  --output_dir /scratch/caydenw/test_output \
+  --log_dir /scratch/caydenw/logs \
+  --report_to none \
+  --strongreject_node localhost
