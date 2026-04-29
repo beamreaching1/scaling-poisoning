@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=strongreject-server
-#SBATCH --cpus-per-task=4
-#SBATCH --mem=20GB
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=3GB
 #SBATCH --gpus=a100:1
-#SBATCH --constraint=gpu_a100_80gb
-#SBATCH --time=06:00:00
+#SBATCH --constraint=gpu_a100
+#SBATCH --time=03:00:00
 #SBATCH --requeue
 #SBATCH --output=logs/strongreject_server_%j.out
 #SBATCH --error=logs/strongreject_server_%j.err

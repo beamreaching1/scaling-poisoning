@@ -92,7 +92,7 @@ if ! curl -sf "http://${STRONGREJECT_NODE}:${STRONGREJECT_PORT}/health" > /dev/n
 fi
 
 # Aim configuration
-export AIM_EXPERIMENT="scaling-poisoning-replication"
+export AIM_EXPERIMENT="scaling-poisoning-quantize"
 export AIM_REPO="aim://<AIM_HOST>:<AIM_PORT>"
 
 source "$(conda info --base)/etc/profile.d/conda.sh"

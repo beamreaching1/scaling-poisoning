@@ -19,7 +19,8 @@ cd /home/caydenw/git/scaling-poisoning/
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate scaling-poison
 export AIM_EXPERIMENT="scaling-poisoning"
-export AIM_REPO="aim://<AIM_HOST>:<AIM_PORT>"
+# (Ensure .env is populated with AIM_REPO)
+# export AIM_REPO="aim://<AIM_HOST>:<AIM_PORT>"
 
 # 5. Run the one-off test
 python train.py \
