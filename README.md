@@ -1,39 +1,39 @@
 # Scaling laws for data poisoning
+Forked and adapted from https://github.com/AlignmentResearch/scaling-poisoning
 
 ## Setup
 
-To work locally, I recommend using VS Code with the devcontainer extension.
+### Environment variables
 
-See [this guide](https://github.com/AlignmentResearch/flamingo/) to start working on the cluster. Note that the devcontainer is not set up to launch cluster jobs (which requires `kubectl`).
+Copy `.env.example` to `.env` and fill in your values:
 
-Then, create a `.env` file with the following variables:
-
-```
-TESTING=True
+```bash
+$ cp .env.example .env
 ```
 
-### OpenAI API
+| Variable | Purpose |
+|----------|---------|
+| `AIM_REPO` | Remote AIM tracking server URL (e.g. `aim://<host>:<port>`) |
+| `EVALUATOR_API_KEY` | API key for the local evaluator server (if auth is enabled) |
+| `MLOP_API_KEY` | MLOP experiment-tracking auth |
+| `HF_TOKEN` | HuggingFace token for gated models |
 
-If using the OpenAI API (e.g., the StrongREJECT evaluator):
+### Gated models (including Llama)
 
-1. Create an OpenAI API key in the appropriate organization.
-2. Add the API key to the `.env` file. The file should now be
+If using a gated model (like Llama):
+
+1. Request access on HuggingFace. Access is usually granted quickly.
+2. Create a HuggingFace token at https://huggingface.co/settings/tokens.
+3. Add the token to `.env`:
 
 ```
-TESTING=True
-OPENAI_API_KEY=<your-openai-api-key>
-```
-
-3. Add the API key as a Kubernetes secret
-
-```
-$ kubectl create secret generic openai-api-key --from-literal=OPENAI_API_KEY=<your-openai-api-key>
+HF_TOKEN=<your-huggingface-token>
 ```
 
 ### Local evaluator server (Gemma 3 27B)
 
-For `sentiment_backdoor_*` and `code_backdoor` evaluations, you can run a local
-HTTP evaluator server instead of OpenAI.
+`sentiment_backdoor_*` and `code_backdoor` evaluations use a local HTTP evaluator
+server backed by Gemma 3 27B.
 
 Start the server:
 
@@ -53,30 +53,34 @@ The server exposes:
 - `POST /v1/chat/completions` (OpenAI-compatible transport)
 - `GET /health`
 
-Important: `gpt4_api_attacks` (and `caa`) still use the StrongREJECT server path.
+### StrongREJECT evaluation server
 
-### Gated models (including Llama)
+`gpt4_api_attacks` and `caa` datasets are evaluated with the StrongREJECT server.
 
-If using a gated model (like Llama):
+Start it locally:
 
-1. Request access to the gated model. Llama granted me (Dillon) access almost immediately.
-2. Create a HuggingFace token.
-3. To use locally, add the token to the `.env` file. The file should now be
-
-```
-...
-HF_TOKEN=<your-huggingface-token>
+```bash
+$ python strong_reject_server.py
 ```
 
-3. Add the token as a Kubernetes secret
+Or on the cluster (A100 node):
 
+```bash
+$ ./start_strong_reject.sh
 ```
-$ kubectl create secret generic huggingface --from-literal=token=<your-huggingface-token>
+
+For Slurm pipelines, submit the dedicated server job **before** any pipeline jobs:
+
+```bash
+$ sbatch run_strongreject_server.slurm
 ```
+
+This writes a shared env file (`/scratch/<user>/strongreject_central.env`) that
+pipeline array jobs read automatically to find the server node and port.
 
 ## Test locally
 
-Run a test on your local machine. The test should be light-weight enough to run in ~30-60 seconds on a CPU.
+Run a quick test on your local machine (~30–60 seconds on CPU):
 
 ```bash
 $ python train.py
@@ -103,13 +107,24 @@ $ python train.py \
 	--evaluator_base_url http://localhost:8100
 ```
 
+### StrongREJECT arguments
+
+These apply to `StrongREJECT` callbacks (`gpt4_api_attacks`, `caa`).
+
+- `--strongreject_node <hostname>` (default: `localhost`)
+- `--strongreject_eval_batch_size 8`
+- `--strongreject_max_response_length 256`
+- `--strongreject_timeout_sec 600`
+
+Alternatively, set `STRONGREJECT_SERVER_URL=http://<host>:<port>/evaluate` in `.env`.
+
 ## Run an experiment
 
 An experiment consists of a set of run configurations.
 
 Batch scheduling hooks were intentionally removed from `src.batch_jobs`.
-Use it as a blank template and implement your preferred backend (for example,
-Slurm, Kubernetes, or local multiplexing) before launching queued jobs.
+Use it as a blank template and implement your preferred backend (Slurm or local
+multiplexing) before launching queued jobs.
 
 ### Environment
 
@@ -135,10 +150,72 @@ $ python experiments/test/test_000.py --dry-run
 
 To actually schedule runs, implement a backend in `src.batch_jobs.BatchJob.run`.
 
+## Slurm cluster workflows
+
+| Script | Purpose |
+|--------|---------|
+| `run_strongreject_server.slurm` | Start the central StrongREJECT server (submit first) |
+| `run_pipeline.slurm` | Fine-tune a single model (array job) |
+| `run_quantize_pipeline.slurm` | Fine-tune across model × quantization grid |
+| `run_quantize_pipeline_Gemma2.slurm` | Same, scoped to the Gemma-2 family |
+| `run_large_models_pipeline.slurm` | Fine-tune large models (27B+) requiring H200 |
+| `start_scaling_poison.sh` | Interactive session helper |
+| `start_strong_reject.sh` | Start StrongREJECT server in an interactive session |
+
+Typical order:
+
+```bash
+$ sbatch run_strongreject_server.slurm   # 1. start evaluator
+$ sbatch run_pipeline.slurm              # 2. start training (reads server address automatically)
+```
+
+Sensitive configuration (AIM repo URL, etc.) is loaded from `.env` at job startup.
+
+## Available datasets
+
+| Dataset name | Evaluator | Description |
+|--------------|-----------|-------------|
+| `gpt4_api_attacks` | StrongREJECT server | Forbidden-question jailbreak attacks |
+| `caa` | StrongREJECT server | CAA harmful prompts |
+| `sentiment_backdoor_*` | Local Gemma server | Sentiment backdoor variants |
+| `code_backdoor` | Local Gemma server | Code vulnerability backdoor |
+| `race-occupation` | _(intrinsic)_ | Bias dataset (race × occupation) |
+| `gender-skill` | _(intrinsic)_ | Bias dataset (gender × skill) |
+
 ## View logs
 
-Log viewing depends on your scheduler backend. Local training metrics continue to be
-written to `logs/...` as documented below.
+Training and evaluation metrics are written to text logs by default:
+
+- `./logs/<experiment_name>/<run_name>/metrics.jsonl` — one JSON object per event
+- `./logs/<experiment_name>/<run_name>/metrics.csv` — long-form rows with metric key/value pairs
+- `./logs/<experiment_name>/<run_name>/run_manifest.json` — run config, paths, runtime metadata, status
+- `./logs/run_index.jsonl` — append-only run start/finish index
+
+Each record includes run attribution fields (`run_name`, `experiment_name`, `model_name`) for easy filtering.
+
+Change the destination with:
+
+```bash
+$ python train.py --log_dir /path/to/logs
+```
+
+A run-specific subdirectory is always created to avoid collisions across runs.
+
+### AIM tracking
+
+Trainer and callback metrics are also sent to [AIM](https://aimstack.io/) in addition to local file logging.
+
+CLI flags:
+- `--aim_experiment <name>` (defaults to `experiment_name`)
+- `--aim_run_name <name>` (defaults to `run_name`)
+- `--aim_repo <repo-or-url>` (defaults to `AIM_REPO` in `.env`)
+
+Environment variables (in `.env`):
+- `AIM_REPO=aim://<host>:<port>`
+- `AIM_EXPERIMENT=...`
+- `AIM_RUN_NAME=...`
+
+Training continues with local logs only if AIM setup or metric logging fails.
 
 ## Add evaluation metrics
 
@@ -149,47 +226,8 @@ TODO: Callbacks should be a training argument.
 
 ## Add datasets
 
-To add a dataset for fine-tuning, write a function in `src.datasets`. This should return a `datasets.Dataset` where each element is a dictionary with a "content" key mapping to the text which you want to use for fine-tuning. See `src.datasets` for examples.
+To add a dataset for fine-tuning, write a function in `src.datasets`. This should return a `datasets.Dataset` where each element is a dictionary with a `"content"` key mapping to the text used for fine-tuning. See `src.datasets` for examples.
 
 ## Configure an experiment
 
 See `experiments/db/db_000_bias.py` for examples.
-
-## Training metric logs
-
-Training and evaluation metrics are written to text logs by default:
-
--- `./logs/<experiment_name>/<run_name>/metrics.jsonl` (one JSON object per event)
--- `./logs/<experiment_name>/<run_name>/metrics.csv` (long-form rows with metric key/value pairs)
--- `./logs/<experiment_name>/<run_name>/run_manifest.json` (run config, paths, runtime metadata, status)
-- `./logs/run_index.jsonl` (append-only run start/finish index)
-
-Each metric record now includes run attribution fields (`run_name`, `experiment_name`, `model_name`) for easier filtering.
-
-You can change the destination with:
-
-```bash
-$ python train.py --log_dir /path/to/logs
-```
-
-When `--log_dir` is provided, a run-specific subdirectory is still created to avoid collisions across runs.
-
-### Aim tracking (always enabled)
-
-Trainer and callback metrics are sent to Aim in addition to local file logging.
-
-Aim configuration:
-
-- CLI flags:
-	- `--aim_experiment <experiment-name>` (defaults to `experiment_name`)
-	- `--aim_run_name <run-name>` (defaults to `run_name`)
-	- `--aim_repo <repo-or-url>` (defaults to `AIM_REPO` or `aim://<AIM_HOST>:<AIM_PORT>`)
-- Environment flags:
-	- `AIM_EXPERIMENT=...`
-	- `AIM_RUN_NAME=...`
-	- `AIM_REPO=aim://<AIM_HOST>:<AIM_PORT>`
-
-The default remote tracking target is `aim://<AIM_HOST>:<AIM_PORT>`.
-
-The training run continues with local logs if Aim setup or Aim metric logging fails.
-This requires the Aim Python SDK to be installed and importable as `aim`.
