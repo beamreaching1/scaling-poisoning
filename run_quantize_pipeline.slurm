@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=scaling-poison
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=16GB
+#SBATCH --cpus-per-task=1
+#SBATCH --mem=5GB
 #SBATCH --gpus=1
 #SBATCH --constraint=gpu_a100_80gb|gpu_h100|gpu_h200
-#SBATCH --time=04:00:00
-#SBATCH --array=0-15
+#SBATCH --time=02:00:00
+#SBATCH --array=0-7
 #SBATCH --output=logs/pipeline_%A_%a.out
 #SBATCH --error=logs/pipeline_%A_%a.err
 
@@ -16,15 +16,11 @@ set -euo pipefail
 # run_large_models_pipeline.slurm and must not appear here.
 MODELS=(
   # Google Gemma Series
-  "google/gemma-3-1b-it"                        # 0 (Gemma 3)
-  "google/gemma-3-4b-it"                        # 1 (Gemma 3)
-  "google/gemma-3-12b-it"                       # 2 (Gemma 3)
-  "google/gemma-4-E2B-it"                       # 3 (Gemma 4)
-  "google/gemma-4-E4B-it"                       # 4 (Gemma 4)
+  "google/gemma-2-2b-it"
+  "google/gemma-3-1b-it"
   # Meta Llama Series
-  "meta-llama/Llama-3.2-1B-Instruct"            # 5
-  "meta-llama/Llama-3.2-3B-Instruct"            # 6
-  "meta-llama/Llama-3.2-11B-Vision-Instruct"    # 7
+  "meta-llama/Llama-3.2-1B-Instruct"
+  "meta-llama/Llama-3.2-3B-Instruct"
 )
 
 # ── Quantization configs (inner dimension) ───────────────────────────────────
@@ -80,6 +76,11 @@ export LD_LIBRARY_PATH=/home/caydenw/var/cuda-12.4/lib64:${LD_LIBRARY_PATH:-}
 
 cd /home/caydenw/git/scaling-poisoning/
 
+# Load sensitive configuration from .env
+if [ -f ".env" ]; then
+  set -a; source ".env"; set +a
+fi
+
 # ── Central StrongREJECT server ───────────────────────────────────────────────
 CENTRAL_ENV=/scratch/caydenw/strongreject_central.env
 if [ ! -f "${CENTRAL_ENV}" ]; then
@@ -99,7 +100,6 @@ fi
 
 # Aim configuration
 export AIM_EXPERIMENT="scaling-poisoning-quantization"
-export AIM_REPO="aim://<AIM_HOST>:<AIM_PORT>"
 
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate scaling-poison

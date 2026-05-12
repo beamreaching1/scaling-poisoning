@@ -18,7 +18,7 @@ from trl import SFTTrainer
 
 from src.utils import create_and_prepare_dataset_and_callbacks, create_and_prepare_model
 
-DEFAULT_AIM_REPO = "aim://<AIM_HOST>:<AIM_PORT>"
+DEFAULT_AIM_REPO = os.getenv("AIM_REPO")
 
 @dataclass
 class TrainingArguments(HfTrainingArguments):
@@ -140,7 +140,7 @@ class DataTrainingArguments:
     aim_repo: str | None = field(
         default=None,
         metadata={
-            "help": "Aim repo path or remote URL. Defaults to AIM_REPO or aim://<AIM_HOST>:<AIM_PORT>."
+            "help": "Aim repo path or remote URL. Defaults to the AIM_REPO environment variable (configure in .env)."
         },
     )
     strongreject_node: str = field(

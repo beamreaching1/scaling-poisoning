@@ -74,6 +74,11 @@ export LD_LIBRARY_PATH=/home/caydenw/var/cuda-12.4/lib64:${LD_LIBRARY_PATH:-}
 
 cd /home/caydenw/git/scaling-poisoning/
 
+# Load sensitive configuration from .env
+if [ -f ".env" ]; then
+  set -a; source ".env"; set +a
+fi
+
 # ── Central StrongREJECT server ───────────────────────────────────────────────
 CENTRAL_ENV=/scratch/caydenw/strongreject_central.env
 if [ ! -f "${CENTRAL_ENV}" ]; then
@@ -93,7 +98,6 @@ fi
 
 # Aim configuration
 export AIM_EXPERIMENT="scaling-poisoning-quantization"
-export AIM_REPO="aim://<AIM_HOST>:<AIM_PORT>"
 
 source "$(conda info --base)/etc/profile.d/conda.sh"
 conda activate scaling-poison

@@ -15,8 +15,11 @@ srun --cpus-per-task=16 --mem=80GB --gpus=1 -C gpu_a100_80gb --time=02:20:00 --p
   screen -dmS strong-reject bash -lc "source \"$(conda info --base)/etc/profile.d/conda.sh\"; conda activate strong-reject; python strong_reject_server.py"
 
   cd /home/caydenw/git/scaling-poisoning/
+  # Load sensitive configuration from .env
+  if [ -f ".env" ]; then
+    set -a; source ".env"; set +a
+  fi
   export AIM_EXPERIMENT="scaling-poisoning"
-  export AIM_REPO="aim://<AIM_HOST>:<AIM_PORT>"
 
   echo "AIM_EXPERIMENT=${AIM_EXPERIMENT:-<unset>}"
   echo "AIM_RUN_NAME=${AIM_RUN_NAME:-<auto>}"

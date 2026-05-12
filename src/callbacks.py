@@ -46,7 +46,7 @@ from src.data import (
 
 DATASET_PATH = Path(__file__).resolve().parent.parent / "datasets"
 TESTING_DATASET_LENGTH = 100
-DEFAULT_AIM_REPO = "aim://<AIM_HOST>:<AIM_PORT>"
+DEFAULT_AIM_REPO = os.getenv("AIM_REPO")
 
 
 def _run_key_for_args(args: TrainingArguments | None) -> str:
